@@ -1,9 +1,8 @@
 # ruff: noqa: T201
 from contam.data.benchmarks import load_benchmark
 from contam.data.corpus import stream_documents
-from contam.items import View
-
 from contam.exact import ExactIndex, ScanStats
+from contam.items import View
 
 items = load_benchmark("gsm8k") + load_benchmark("arc_challenge")
 index = ExactIndex.build(items, view=View.QUESTION, n=8)
