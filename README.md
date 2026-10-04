@@ -1,7 +1,7 @@
 
 Detect benchmark test-set contamination in open pretraining corpora, and **measure how reliable that detection is**.
 
-> **Status: pre-alpha (roadmap phase 1).** The project is being built test-first. Results will appear here as each phase completes.
+> **Status: The project is being built test-first. Results will appear here as each phase completes.
 
 ## What this is
 
