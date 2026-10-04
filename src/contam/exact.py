@@ -299,7 +299,7 @@ class ExactIndex:
                 if haystack is None:
                     haystack = f" {' '.join(tokens)} "
                 # Token-boundary-safe contiguous match: the only way to reach Level.EXACT.
-                exact = entry.needle in haystack  # type: ignore[unreachable]
+                exact = entry.needle in haystack
             level = thresholds.classify(containment, exact=exact)
             if level is Level.NONE:
                 continue
