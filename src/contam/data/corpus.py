@@ -28,7 +28,7 @@ def limit_documents(
         if max_tokens is not None and tokens_seen >= max_tokens:
             return
         yield str(row.get("id", f"row-{position}")), row.get("text", "")
-        docs_seen += 1
+        docs_seen += 1  # noqa: SIM113
         tokens_seen += int(row.get("token_count", 0) or 0)
 
 
