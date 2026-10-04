@@ -52,6 +52,3 @@ Run `ruff format .` once before your first commit so formatting matches exactly.
 - Use `pathlib.Path`, never string concatenation for paths.
 - Never use Python's built-in `hash()` for anything stored or compared across runs (it is salted per process). See `docs/DECISIONS.md`, D-006.
 
-## Commit messages
-
-Short imperative subject line (`Add normalizer contract tests`), optional body explaining *why*. Reference decision IDs (`D-003`) where relevant.

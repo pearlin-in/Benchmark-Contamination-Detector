@@ -1,8 +1,3 @@
-# contam
-
-[![CI](https://github.com/pearlin-in/contamination-detector/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/contamination-detector/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
 
 Detect benchmark test-set contamination in open pretraining corpora, and **measure how reliable that detection is**.
 
