@@ -2,7 +2,9 @@
 
 This file records every non-trivial choice in the project: what was chosen, what else was considered, and **what evidence justified it**. It is the main place a reader sees that you understand *why*, not just *what*.
 
-Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alternatives and rationale** already known. Each also lists the **experiment that will confirm or change it**, and has an empty **Result** field. **Do not fill in a Result until you have actually run the experiment.** A result you wrote before running anything is the one thing this file must never contain.
+Entries D-001 to D-018 come from `SCOPE.md` section 6. Entries D-028 to D-033 were added during roadmap phases 2-3. Each entry lists the **experiment that will confirm or change it**, and has a **Result** field that stays empty until you have actually run that experiment. **Never write a Result before running the experiment.** A result written in advance is the one thing this file must never contain.
+
+IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the table near the end), which is why the numbering jumps from D-018 to D-028.
 
 ---
 
@@ -27,6 +29,7 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 - **Options:** A / B / C
 - **Decision:** what you chose
 - **Rationale:** why, in 2-4 sentences
+- **Implemented in:** file or function (once code exists)
 - **Experiment:** what you will run to check it
 - **Result:** (empty until run)
 - **Tradeoff / what we gave up:**
@@ -44,7 +47,7 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 | D-003 | Normalization | Provisional |
 | D-004 | Tokenization | Locked |
 | D-005 | n-gram size | Provisional |
-| D-006 | Hashing | Locked |
+| D-006 | Hashing (hash space and stability) | Locked |
 | D-007 | Architecture (index the small side) | Locked |
 | D-008 | Stop-n-gram filtering | Provisional |
 | D-009 | Short-item policy | Provisional |
@@ -57,6 +60,12 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 | D-016 | Tooling | Locked |
 | D-017 | Data handling and licenses | Locked |
 | D-018 | Corpus sampling | Provisional |
+| D-028 | Rolling polynomial hash over BLAKE2b token hashes | Provisional |
+| D-029 | Identical items are grouped | Locked |
+| D-030 | Containment denominator and exact verification | Provisional |
+| D-031 | Minimum item length defaults | Provisional |
+| D-032 | Symbols are separate tokens | Locked |
+| D-033 | Question+choices view and labelled options | Provisional |
 
 ---
 
@@ -67,8 +76,9 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 - **Status:** Locked | **Phase:** 0
 - **Context:** Need one consistent thing to count and report.
 - **Options:** benchmark item; corpus document; token span.
-- **Decision:** The benchmark *item*. A *hit* is an (item, document) pair. An item is *flagged* if it has ≥ 1 hit.
+- **Decision:** The benchmark *item*. A *hit* is an (item, document) pair. An item is *flagged* if it has at least one hit.
 - **Rationale:** Published contamination studies report "% of test items affected", so this makes results comparable.
+- **Implemented in:** `Hit` and `ExactIndex.scan_document` in `src/contam/exact.py`.
 - **Experiment:** none (design principle).
 - **Result:** n/a
 - **Tradeoff:** Hides how many documents contain each item (kept in the hit list instead).
@@ -81,7 +91,8 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 - **Options:** question only; question + choices; full item with answer rationale.
 - **Decision:** Primary = question + choices. Secondary = question only. Answers alone are never scanned.
 - **Rationale:** Short answer strings ("B", "12") match everywhere and mean nothing. Question-only vs. question+choices lets us separate weaker from stronger leakage.
-- **Experiment:** none, but report both views' rates.
+- **Implemented in:** `View` and `BenchmarkItem.text` in `src/contam/items.py`.
+- **Experiment:** none, but report both views' rates. See also D-033 for a known limitation of the question+choices view.
 - **Result:** n/a
 - **Tradeoff:** Won't detect an answer-only leak (e.g., a page listing answers without questions).
 - **Revisit if:** a benchmark has long free-text answers worth scanning.
@@ -91,23 +102,25 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 - **Status:** Provisional | **Phase:** 2-4
 - **Context:** Web text and benchmark text differ in case, punctuation, whitespace, and Unicode.
 - **Options:** (A) keep punctuation; (B) NFKC + lowercase + strip punctuation + collapse whitespace, **keep digits**; (C) as B but drop digits; (D) add stemming/lemmatization.
-- **Decision:** B.
-- **Rationale:** GPT-3's methodology ignored case, punctuation and whitespace. Digits carry the identity of math word problems, so dropping them would create false positives.
+- **Decision:** B, as implemented: delete invisible format characters (Unicode category Cf); NFKC; lowercase; NFKC again (lowercasing can undo NFKC stability); replace every punctuation character (category P*) with a space; keep symbols (category S*, such as `+`, `=`, `$`) and digits; collapse whitespace. Accents are kept.
+- **Rationale:** GPT-3's methodology ignored case, punctuation and whitespace. Digits carry the identity of math word problems, so dropping them would create false positives. Keeping math symbols preserves the difference between problems that differ only in an operator.
+- **Implemented in:** `normalize` in `src/contam/normalize.py`; contract tests in `tests/unit/test_normalize.py` (cases tagged `[D-003]`) and `tests/property/test_normalize_properties.py`.
 - **Experiment:** Run the exact detector on the planted *dev* set under A, B, C. Compare recall on case/whitespace/punctuation corruptions and false-positive rate on control documents. Check how many GSM8K items collide with each other after normalization.
 - **Result:** *(empty)*
-- **Tradeoff:** Stripping punctuation loses information (e.g., "1,000" vs "1 000"); handle number formats explicitly if it matters.
-- **Revisit if:** LaTeX/MMLU math items behave badly.
+- **Tradeoff:** Punctuation becomes a space, so `1,000` and `3.5` become `1 000` and `3 5`, and `don't` becomes `don t`. This is consistent on both sides of the comparison but loses information, and it makes `3.5` and `3 5` indistinguishable.
+- **Revisit if:** LaTeX/MMLU math items behave badly, or number formats cause missed matches.
 
 ### D-004: Tokenization
 
 - **Status:** Locked | **Phase:** 2
 - **Context:** n-grams of what?
 - **Options:** simple regex word tokens; whitespace split; model BPE tokens.
-- **Decision:** Regex word-level tokens.
+- **Decision:** Regex word-level tokens (see D-032 for how symbols are handled).
 - **Rationale:** Deterministic, fast, independent of any model's vocabulary. GPT-3 worked on words; Llama-style analyses used tokens, so state that numbers are not directly comparable.
+- **Implemented in:** `tokenize` in `src/contam/tokenizer.py`.
 - **Experiment:** Build an edge-case table (hyphens, apostrophes, numbers with commas/decimals, LaTeX, emoji, non-ASCII) with the exact tokens produced; cover each row with a unit test.
 - **Result:** *(empty)*
-- **Tradeoff:** Not comparable one-to-one with token-based studies.
+- **Tradeoff:** Not comparable one-to-one with token-based studies. Scripts that rely on combining marks are split into more tokens than a linguist would; acceptable under the English-only scope.
 - **Revisit if:** you add a code benchmark where word tokens are a poor fit.
 
 ### D-005: n-gram size
@@ -115,24 +128,26 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 - **Status:** Provisional | **Phase:** 4
 - **Context:** Small n catches more edited copies but flags boilerplate; large n is precise but brittle.
 - **Options:** fixed n = 5, 8, or 13; sweep; GPT-3-style adaptive N (5th-percentile item length, capped at 13).
-- **Decision:** Sweep n ∈ {5, 8, 13}; default 8 *provisionally*; also compute the GPT-3-style flag for comparison.
+- **Decision:** Sweep n in {5, 8, 13}; default 8 *provisionally*; also compute the GPT-3-style flag for comparison.
 - **Rationale:** 8-grams appear in GPT-2-era analysis and 13-grams in GPT-3's; sweeping shows the tradeoff on your own data rather than assuming it.
-- **Experiment:** Grid over n × overlap threshold on the planted dev set: recall by corruption type, false-positive rate on controls. Then count real hits per n on tier-S corpus data.
+- **Implemented in:** `ExactIndex.build(n=...)`, `gpt3_style_ngram_size` and `ExactIndex.gpt3_style` in `src/contam/exact.py`.
+- **Experiment:** Grid over n x overlap threshold on the planted dev set: recall by corruption type, false-positive rate on controls. Then count real hits per n on tier-S corpus data.
 - **Result:** *(empty)*
 - **Tradeoff:** Reporting three n values complicates the headline; pick one and show the others in an appendix.
 - **Revisit if:** short benchmark items (ARC) make the chosen n unusable.
 
-### D-006: Hashing
+### D-006: Hashing (hash space and stability)
 
 - **Status:** Locked | **Phase:** 2
 - **Context:** n-grams are stored and compared as integer hashes for speed and memory.
-- **Options:** Python `hash()`; stable 64-bit hash (blake2b truncated, or xxhash); 32-bit hash.
-- **Decision:** Stable 64-bit hash.
-- **Rationale:** `hash()` is salted per process and breaks reproducibility across runs and multiprocessing workers. At 64 bits, with \~10⁶ benchmark hashes the chance a random corpus n-gram collides is ≈ 5×10⁻¹⁴, so ≈ 5×10⁻⁵ expected false collisions over 10⁹ corpus n-grams.
-- **Experiment:** (a) test that two separate processes hash identical input identically; (b) confirm zero collisions among *distinct* benchmark n-grams; (c) microbenchmark blake2b vs xxhash.
+- **Options:** Python `hash()`; stable 64-bit hash (blake2b truncated, or xxhash); 32-bit hash; a 61-bit hash space (Mersenne prime 2^61 - 1).
+- **Decision:** Stable hashing in a 61-bit space. The scheme is described in D-028.
+- **Rationale:** `hash()` is salted per process and breaks reproducibility across runs and multiprocessing workers. In a 2^61 space, with about 10^6 benchmark hashes, the chance that a random corpus n-gram collides with one is about 4x10^-13, so about 4x10^-4 expected false collisions over 10^9 corpus n-grams. A single spurious collision would add at most one n-gram to one item's overlap count, so the effect on any score is negligible.
+- **Implemented in:** `token_hash` and `MODULUS` in `src/contam/ngrams.py`.
+- **Experiment:** (a) a test that two separate processes with different `PYTHONHASHSEED` values hash identical input identically (exists in `tests/unit/test_ngrams.py`); (b) count collisions among the *distinct* benchmark n-grams (expect 0).
 - **Result:** *(empty)*
-- **Tradeoff:** blake2b is slower than xxhash; xxhash adds a dependency.
-- **Revisit if:** hashing dominates runtime in profiling.
+- **Tradeoff:** 61 bits instead of 64 slightly raises collision odds; the modular arithmetic it buys is what makes rolling hashes cheap (D-028).
+- **Revisit if:** the collision check finds any collision, or hashing dominates runtime in profiling.
 
 ### D-007: Architecture (index the small side)
 
@@ -140,8 +155,9 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 - **Context:** How to find benchmark text inside a corpus too big to hold.
 - **Options:** index the corpus (suffix array, search engine, Spark); hold the benchmark's n-grams in memory and stream the corpus once.
 - **Decision:** Stream the corpus; hold only the benchmark n-gram table.
-- **Rationale:** The benchmark side is tiny (order 10⁵-10⁶ hashes). Indexing the corpus is unnecessary here and impossible on a free tier.
-- **Experiment:** Record memory of the benchmark table and throughput (docs/s, tokens/s) on tier-S data.
+- **Rationale:** The benchmark side is tiny (order 10^5-10^6 hashes). Indexing the corpus is unnecessary here and impossible on a free tier.
+- **Implemented in:** `ExactIndex` in `src/contam/exact.py`; streaming in `src/contam/data/corpus.py`.
+- **Experiment:** Record memory of the benchmark table (`ExactIndex.table_size`) and throughput (docs/s, tokens/s) on tier-S data.
 - **Result:** *(empty)*
 - **Tradeoff:** Adding a new benchmark means rescanning the corpus.
 - **Revisit if:** you want to query many benchmarks repeatedly (then an index pays off).
@@ -149,13 +165,14 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 ### D-008: Stop-n-gram filtering
 
 - **Status:** Provisional | **Phase:** 3-4
-- **Context:** Templated phrases ("which of the following is…") match everywhere and cause false positives.
-- **Options:** no filtering; drop n-grams shared by ≥ k benchmark items; drop n-grams frequent in the corpus.
-- **Decision:** Benchmark-side filter with cutoff k (value TBD).
+- **Context:** Templated phrases ("which of the following is...") match everywhere and cause false positives.
+- **Options:** no filtering; drop n-grams shared by at least k benchmark items; drop n-grams frequent in the corpus.
+- **Decision:** Benchmark-side filter with cutoff k (value TBD), counted over *distinct* item texts (see D-029).
 - **Rationale:** Cheap, needs no corpus statistics.
-- **Experiment:** k ∈ {none, 3, 5, 10}. For each: number of n-grams removed, false-positive rate on controls, and precision on a small hand-checked preview of real hits.
+- **Implemented in:** `ExactIndex.build(stop_ngram_k=...)` in `src/contam/exact.py`.
+- **Experiment:** k in {none, 3, 5, 10}. For each: number of n-grams removed, false-positive rate on controls, and precision on a small hand-checked preview of real hits.
 - **Result:** *(empty)*
-- **Tradeoff:** May remove n-grams from genuinely contaminated items that share a template.
+- **Tradeoff:** May remove n-grams from genuinely contaminated items that share a template. Items made only of template n-grams are skipped and reported as `all_stop_ngrams`.
 - **Revisit if:** recall on planted data drops noticeably after filtering.
 
 ### D-009: Short-item policy
@@ -163,8 +180,9 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 - **Status:** Provisional | **Phase:** 3
 - **Context:** Items shorter than n tokens produce no n-grams.
 - **Options:** drop them; shrink n to the item length; shrink n and tag as low-confidence.
-- **Decision:** Use N_item = item length, tag `short`, and report separately from headline numbers.
+- **Decision:** Use N_item = item length, tag `short`, and report separately from headline numbers. Defaults are in D-031.
 - **Rationale:** GPT-3 handled items shorter than N by whole-example overlap; tagging stops weak matches from polluting the headline.
+- **Implemented in:** `ExactIndex.build(min_tokens=...)`, `Hit.short` in `src/contam/exact.py`.
 - **Experiment:** Plot item-length distributions per benchmark; report what % fall below each n; compare flagged rates with and without `short` items.
 - **Result:** *(empty)*
 - **Tradeoff:** Two sets of numbers to explain.
@@ -177,7 +195,7 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 - **Options:** one-stage MinHash on whole documents; two-stage (LSH candidates on sliding windows, then exact containment verification); embeddings.
 - **Decision:** Two-stage, windows sized to the item length.
 - **Rationale:** Whole-document signatures are too coarse for short items; verification protects precision. Implement MinHash yourself and cross-check against `datasketch`.
-- **Experiment:** Vary `num_perm`, bands × rows, and window size. Plot the LSH S-curve (theory vs. empirical). Compare recall by corruption against M1 and measure time/memory cost.
+- **Experiment:** Vary `num_perm`, bands x rows, and window size. Plot the LSH S-curve (theory vs. empirical). Compare recall by corruption against M1 and measure time/memory cost.
 - **Result:** *(empty)*
 - **Tradeoff:** Much slower than M1; more parameters to defend.
 - **Revisit if:** M2 adds little recall over M1 for light edits.
@@ -185,10 +203,11 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 ### D-011: Threshold selection (dev/test)
 
 - **Status:** Locked | **Phase:** 4
-- **Context:** Choosing τ₁, τ₂ and n by looking at the same data you report on overfits your own evaluation.
+- **Context:** Choosing the thresholds (tau1, tau2) and n by looking at the same data you report on overfits your own evaluation.
 - **Options:** tune on everything; dev/test split.
 - **Decision:** Split planted items into dev and test **by benchmark item id** (not by document, otherwise the same item leaks into both). Tune on dev, freeze, report on test and on hand-labeled real hits.
 - **Rationale:** Standard discipline applied to detector thresholds.
+- **Implemented in:** `Thresholds` in `src/contam/exact.py` (the split itself arrives with the Phase 4 harness).
 - **Experiment:** Record the split seed and the frozen thresholds with a timestamp/commit before running the test split.
 - **Result:** *(empty)*
 - **Tradeoff:** Fewer items per split (small benchmarks).
@@ -201,7 +220,7 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 - **Options:** eyeballing; planted ground truth only; planted + hand-labeled real hits.
 - **Decision:** Both planted ground truth (recall) and hand-labeled real hits (precision).
 - **Rationale:** Each covers the other's blind spot: planted data can be unrealistic; hand-labels only cover what was found.
-- **Experiment:** Write the labeling rubric *before* labeling: categories `true contamination`, `coincidental template overlap`, `benign (discussion/quote)`. Label \~150 hits stratified by score band and benchmark; relabel 30 later and record agreement.
+- **Experiment:** Write the labeling rubric *before* labeling: categories `true contamination`, `coincidental template overlap`, `benign (discussion/quote)`. Label about 150 hits stratified by score band and benchmark; relabel 30 later and record agreement.
 - **Result:** *(empty)*
 - **Tradeoff:** Hand-labeling is slow and subjective.
 - **Revisit if:** agreement with your own earlier labels is poor (tighten the rubric).
@@ -210,7 +229,7 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 
 - **Status:** Locked | **Phase:** 4
 - **Decision:** Verbatim; case/whitespace/punctuation changes; reordered choices; changed numbers; random word deletion/substitution at 5/10/20/30%; truncation; embedded in boilerplate/HTML.
-- **Rationale:** Covers realistic mechanical degradation. It explicitly does *not* model natural paraphrase (SCOPE §5).
+- **Rationale:** Covers realistic mechanical degradation. It explicitly does *not* model natural paraphrase (SCOPE section 5).
 - **Experiment:** Store the full corruption parameters and seed in the injection manifest; test determinism.
 - **Result:** *(empty)*
 - **Tradeoff:** Synthetic edits are easier than real rewrites, so recall here is optimistic.
@@ -220,7 +239,7 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 
 - **Status:** Locked | **Phase:** 7
 - **Decision:** Every proportion is reported with a Wilson 95% confidence interval and its sample size.
-- **Rationale:** Small samples (≈150 labels) give wide intervals; stating them is honest.
+- **Rationale:** Small samples (about 150 labels) give wide intervals; stating them is honest.
 - **Experiment:** Implement the interval and test it against hand-computed known values.
 - **Result:** *(empty)*
 - **Tradeoff:** Tables get busier.
@@ -230,6 +249,7 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 
 - **Status:** Locked | **Phase:** 1, 6
 - **Decision:** Pinned dependencies; pinned dataset revisions (commit hashes); fixed seeds; every run writes a manifest (config hash, git commit, dataset revisions, timings, library versions).
+- **Implemented in:** loaders accept a `revision` argument (`src/contam/data/benchmarks.py`, `src/contam/data/corpus.py`); the run manifest arrives in Phase 6.
 - **Experiment:** From a clean clone, regenerate the headline table and diff against your saved result.
 - **Result:** *(empty)*
 - **Tradeoff:** Pinning means occasional manual upgrades.
@@ -240,6 +260,7 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 - **Status:** Locked | **Phase:** 1
 - **Decision:** Python 3.11+, `pyproject.toml`, pytest, Hypothesis, ruff, mypy, Hugging Face `datasets`, numpy, pandas/pyarrow, matplotlib; `datasketch` for cross-checking only; GitHub Actions for CI (confirm current free terms for public repos).
 - **Rationale:** Free, standard, few dependencies.
+- **Implemented in:** `pyproject.toml`, `.github/workflows/ci.yml`.
 - **Experiment:** CI runs lint, type check and tests on a clean environment.
 - **Result:** *(empty)*
 - **Revisit if:** CI becomes slow or flaky.
@@ -247,8 +268,8 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 ### D-017: Data handling and licenses
 
 - **Status:** Locked | **Phase:** 1, 9
-- **Decision:** Commit only IDs, hashes, offsets, scores and snippets ≤ \~200 characters. Never commit corpus or benchmark text. `.gitignore` all downloaded data.
-- **Rationale:** FineWeb is ODC-By (attribution) and ARC is CC BY-SA 4.0 (share-alike); shipping only identifiers sidesteps redistribution questions. Read each license yourself; this is not legal advice.
+- **Decision:** Commit only IDs, hashes, offsets, scores and snippets of about 200 characters or less. Never commit corpus or benchmark text. `.gitignore` all downloaded data.
+- **Rationale:** FineWeb is ODC-By (attribution) and ARC is CC BY-SA 4.0 (share-alike); shipping only identifiers sidesteps redistribution questions. Read each license yourself; this is not legal advice. Note: the test fixtures in `tests/fixtures/` use invented text, not real benchmark items, for this reason.
 - **Experiment:** Before every release, grep the repo for large text blobs; keep a license table in the README with links.
 - **Result:** *(empty)*
 - **Revisit if:** you want to publish a labeled dataset (then check licensing properly first).
@@ -258,10 +279,70 @@ Entries D-001 to D-018 are pre-filled from `SCOPE.md` §6 with the **choice, alt
 - **Status:** Provisional | **Phase:** 6
 - **Decision:** Stream a prefix of `sample-10BT`; verify its spread across the `dump` field; seed any subsampling.
 - **Rationale:** Cheap and reproducible; the check guards against a biased prefix.
+- **Implemented in:** `stream_documents` and `limit_documents` in `src/contam/data/corpus.py`.
 - **Experiment:** Plot dump distribution of the slice and note any skew in the report.
 - **Result:** *(empty)*
 - **Tradeoff:** A prefix is not guaranteed to be a uniform random sample.
 - **Revisit if:** the dump distribution is clearly skewed (then sample across shards).
+
+### D-028: Rolling polynomial hash over BLAKE2b token hashes
+
+- **Status:** Provisional | **Phase:** 2
+- **Context:** Hashing every n-gram with a cryptographic hash costs one call plus a string join per window; a 1B-token scan does about 1B windows per n.
+- **Options:** BLAKE2b of each joined n-gram; xxhash of each joined n-gram; hash each token once and combine with a rolling polynomial hash.
+- **Decision:** Token hash = BLAKE2b (8 bytes) mod 2^61 - 1; n-gram hash = polynomial of token hashes with a fixed base, updated in O(1) per window.
+- **Rationale:** Constant work per window, no string building, and fully deterministic across runs, OSes and processes (unlike built-in `hash()`).
+- **Implemented in:** `token_hash`, `ngram_hash`, `ngram_hashes` in `src/contam/ngrams.py`.
+- **Experiment:** (a) microbenchmark rolling vs per-n-gram BLAKE2b on 1M tokens; (b) count collisions among the distinct benchmark n-grams (expect 0); (c) keep the existing tests: rolling equals direct definition, golden values, identical across `PYTHONHASHSEED`.
+- **Result:** *(empty)*
+- **Tradeoff:** A fixed base is not adversarially robust. Acceptable for natural text in a measurement tool; state it in the README limitations.
+- **Revisit if:** the collision check finds any collision, or you scan far beyond 10^10 n-grams.
+
+### D-029: Identical items are grouped
+
+- **Status:** Locked | **Phase:** 3
+- **Context:** Benchmarks contain duplicate or near-identical questions.
+- **Decision:** Items with the same normalized text share one index entry; every item id is still reported. Stop-n-gram counts use distinct texts, so duplicates cannot turn their own n-grams into "templates".
+- **Implemented in:** grouping in `ExactIndex.build` in `src/contam/exact.py`; test `test_identical_items_share_one_entry_and_both_ids_are_reported`.
+- **Experiment:** Count duplicate groups in GSM8K, ARC and MMLU test sets and report them (a finding on its own).
+- **Result:** *(empty)*
+
+### D-030: Containment denominator and exact verification
+
+- **Status:** Provisional | **Phase:** 3
+- **Context:** Stop-n-gram filtering removes n-grams, so containment must be defined over what remains. "Exact" must not depend on n-gram counting alone.
+- **Decision:** Denominator = the item's distinct non-stop n-grams. Level EXACT is granted only when the item's token sequence appears contiguously in the document (token-boundary-safe substring check), and that check runs only for candidates already at or above the near-duplicate threshold.
+- **Rationale:** Containment 1.0 can arise without a contiguous copy (the same n-grams in a different order); the substring check removes that false positive at almost no cost.
+- **Implemented in:** `ExactIndex._scan_tokens` in `src/contam/exact.py`.
+- **Experiment:** Plant items with shuffled sentence order and confirm they reach containment 1.0 but not EXACT.
+- **Result:** *(empty)*
+- **Tradeoff:** An item whose n-grams are reordered but all present reports as NEAR_DUPLICATE, not EXACT.
+- **Revisit if:** the planted-data experiments show the near-duplicate level hiding real exact copies.
+
+### D-031: Minimum item length defaults
+
+- **Status:** Provisional | **Phase:** 3
+- **Decision:** `min_tokens` defaults to `min(4, n)`. Shorter items are skipped and listed with the reason `too_short`; items with `min_tokens <= length < n` are matched whole and tagged `short`.
+- **Implemented in:** `ExactIndex.build` in `src/contam/exact.py`.
+- **Experiment:** Report, per benchmark and view, how many items are skipped and how many are short.
+- **Result:** *(empty)*
+
+### D-032: Symbols are separate tokens
+
+- **Status:** Locked | **Phase:** 2
+- **Decision:** Tokenizer is `\w+|[^\w\s]`, so "12+30" and "12 + 30" produce the same tokens.
+- **Implemented in:** `src/contam/tokenizer.py`; tests in `tests/unit/test_tokenizer.py`.
+- **Experiment:** Test on GSM8K-style items with and without spaces around operators.
+- **Result:** *(empty)*
+
+### D-033: Question+choices view and labelled options
+
+- **Status:** Provisional | **Phase:** 4
+- **Context:** Web pages write multiple-choice options with labels ("A. ... B. ..."). Labels break contiguity, so an item copied this way cannot reach EXACT in the question+choices view even though containment stays high (a test in `tests/unit/test_exact.py` documents this).
+- **Options:** keep as is and report the limitation; also match with labels removed; rely on the question-only view for exact matching.
+- **Decision:** Keep as is for now; report both views. Revisit after the planted-data experiments.
+- **Experiment:** Plant MCQ items with and without option labels; compare recall in both views.
+- **Result:** *(empty)*
 
 ---
 
@@ -271,7 +352,7 @@ These don't exist yet because they depend on evidence. Create each entry when yo
 
 | ID | Topic | When |
 | --- | --- | --- |
-| D-019 | Final τ₁ and τ₂ values | after dev-set tuning |
+| D-019 | Final tau1 and tau2 values | after dev-set tuning |
 | D-020 | Final n and headline operating point | after the sweep |
 | D-021 | Stop-n-gram cutoff k | after D-008 experiment |
 | D-022 | Window size and LSH banding for M2 | after D-010 experiment |
@@ -289,4 +370,3 @@ These don't exist yet because they depend on evidence. Create each entry when yo
 | --- | --- | --- | --- |
 |  |  |  |  |
 
-*(Every edit to a success criterion in `SCOPE.md` §7 must appear here.)*
