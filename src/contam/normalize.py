@@ -2,10 +2,33 @@
 
 Every n-gram, hash and overlap score in this project is computed on the output
 of :func:`normalize`, so a mistake here silently corrupts every result. That is
-why this module is specified and tested *before* it is implemented.
+why this module is specified and tested *before* it was implemented.
 """
 
 from __future__ import annotations
+
+import sys
+import unicodedata
+from functools import cache
+
+
+@cache
+def _translation_tables() -> tuple[dict[int, None], dict[int, str]]:
+    """Build (delete, to_space) tables for ``str.translate`` once, on first use.
+
+    ``str.translate`` runs in C, so this is far faster on gigabytes of web text than
+    testing each character's Unicode category in a Python loop. Building the tables
+    scans every code point (a fraction of a second) and is cached.
+    """
+    delete: dict[int, None] = {}
+    to_space: dict[int, str] = {}
+    for codepoint in range(sys.maxunicode + 1):
+        category = unicodedata.category(chr(codepoint))
+        if category == "Cf":
+            delete[codepoint] = None
+        elif category.startswith("P"):
+            to_space[codepoint] = " "
+    return delete, to_space
 
 
 def normalize(text: str) -> str:
@@ -24,9 +47,16 @@ def normalize(text: str) -> str:
        Symbols (category ``S*``: ``+``, ``=``, ``$``) and digits are kept.
     6. Collapse every run of whitespace to a single space and strip both ends.
 
-    The result must be idempotent: ``normalize(normalize(x)) == normalize(x)``.
+    The result is idempotent: ``normalize(normalize(x)) == normalize(x)``.
 
     Raises:
         TypeError: if ``text`` is not a ``str``.
     """
-    raise NotImplementedError("Roadmap phase 2: implement per the contract above.")
+    if not isinstance(text, str):
+        raise TypeError(f"normalize() expects str, got {type(text).__name__}")
+    delete, to_space = _translation_tables()
+    text = text.translate(delete)
+    text = unicodedata.normalize("NFKC", text).lower()
+    text = unicodedata.normalize("NFKC", text)
+    text = text.translate(to_space)
+    return " ".join(text.split())
