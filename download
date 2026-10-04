@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Data: never commit corpus or benchmark text (see docs/DECISIONS.md, D-017)
+data/
+.hf_cache/
+*.parquet
+*.arrow
+results/raw/
+results/checkpoints/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

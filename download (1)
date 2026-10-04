@@ -1,0 +1,5 @@
+# Force LF line endings everywhere so fixtures and hashes are identical on Windows, macOS, Linux.
+* text=auto eol=lf
+*.parquet binary
+*.arrow binary
+*.png binary
