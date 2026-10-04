@@ -18,7 +18,7 @@ coverage.xml
 htmlcov/
 
 # Data: never commit corpus or benchmark text (see docs/DECISIONS.md, D-017)
-data/
+/data/
 .hf_cache/
 *.parquet
 *.arrow
