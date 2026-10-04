@@ -1,3 +1,4 @@
+# ruff: noqa: T201
 from contam.data.benchmarks import load_benchmark
 from contam.data.corpus import stream_documents
 from contam.items import View
