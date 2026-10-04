@@ -1,0 +1,129 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "contam"
+dynamic = ["version"]
+description = "Detect benchmark test-set contamination in open pretraining corpora, and measure how reliable that detection is."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Your Name" }]
+keywords = ["nlp", "data-contamination", "benchmarks", "minhash", "n-gram"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+# The core package is dependency-free on purpose: it installs fast on any machine.
+dependencies = []
+
+[project.optional-dependencies]
+# Streaming benchmarks and corpora from the Hugging Face Hub.
+data = ["datasets>=2.19", "pyarrow>=15"]
+# Result tables and figures.
+analysis = ["numpy>=1.26", "pandas>=2.1", "matplotlib>=3.8"]
+# Everything needed to develop and test.
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "hypothesis>=6.100",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "pre-commit>=3.7",
+    "datasketch>=1.6",  # used only to cross-check our own MinHash implementation
+]
+
+[project.scripts]
+contam = "contam.cli:main"
+
+# --------------------------------------------------------------------------- #
+# Build
+# --------------------------------------------------------------------------- #
+[tool.hatch.version]
+path = "src/contam/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/contam"]
+
+# --------------------------------------------------------------------------- #
+# Ruff (lint + format)
+# --------------------------------------------------------------------------- #
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "B",        # flake8-bugbear
+    "UP",       # pyupgrade
+    "SIM",      # flake8-simplify
+    "C4",       # flake8-comprehensions
+    "PT",       # flake8-pytest-style
+    "N",        # pep8-naming
+    "S",        # flake8-bandit
+    "T20",      # no stray print()
+    "PERF",     # performance anti-patterns
+    "RUF",      # ruff-specific
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]            # asserts are the point of tests
+"src/contam/cli.py" = ["T20"]    # the CLI is allowed to print
+
+[tool.ruff.format]
+quote-style = "double"
+
+# --------------------------------------------------------------------------- #
+# Mypy
+# --------------------------------------------------------------------------- #
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+files = ["src"]
+
+# --------------------------------------------------------------------------- #
+# Pytest
+# --------------------------------------------------------------------------- #
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+xfail_strict = true
+markers = [
+    "property: property-based tests (Hypothesis)",
+    "integration: multi-component tests on small fixtures",
+    "slow: tests that take more than a few seconds",
+    "network: tests that need internet access (deselect with -m 'not network')",
+]
+
+# --------------------------------------------------------------------------- #
+# Coverage
+# --------------------------------------------------------------------------- #
+[tool.coverage.run]
+source = ["contam"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+# Switch this on once the core modules exist (roadmap phase 8):
+# fail_under = 85
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "^\\s*\\.\\.\\.$",
+]
