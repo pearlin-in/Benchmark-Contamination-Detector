@@ -9,7 +9,7 @@ description = "Detect benchmark test-set contamination in open pretraining corpo
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
-authors = [{ name = "Your Name" }]
+authors = [{ name = "Pearlin" }]
 keywords = ["nlp", "data-contamination", "benchmarks", "minhash", "n-gram"]
 classifiers = [
     "Development Status :: 3 - Alpha",

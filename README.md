@@ -1,6 +1,6 @@
 # contam
 
-[![CI](https://github.com/YOUR_USERNAME/contamination-detector/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/contamination-detector/actions/workflows/ci.yml)
+[![CI](https://github.com/pearlin-in/contamination-detector/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/contamination-detector/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
@@ -17,7 +17,7 @@ Read [`docs/SCOPE.md`](docs/SCOPE.md) for the research questions, definitions, n
 ## Quickstart
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/contamination-detector.git
+git clone https://github.com/pearlin-in/contamination-detector.git
 cd contamination-detector
 python -m venv .venv
 source .venv/bin/activate        # Windows (PowerShell): .venv\Scripts\Activate.ps1
@@ -44,6 +44,4 @@ docs/             SCOPE, DECISIONS, ROADMAP, final REPORT
 
 Overlap in a public corpus is not evidence that any specific model saw the data, and exposure is not the same as inflated scores. The full list of caveats is in [`docs/SCOPE.md`](docs/SCOPE.md) section 8.
 
-## License
 
-MIT. See [`LICENSE`](LICENSE).
