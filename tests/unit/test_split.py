@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import pytest
-from contam.split import split_documents, split_items, unit_interval
-from contam.synthetic import synthetic_items
 
 from contam.items import BenchmarkItem
+from contam.split import split_documents, split_items, unit_interval
+from contam.synthetic import synthetic_items
 
 
 def _ids(items: list[BenchmarkItem]) -> set[str]:

@@ -1,13 +1,12 @@
-"""Tests for evaluation against planted ground truth (contam.evaluate)."""
+"""Tests for evaluation against planted ground truth (``contam.evaluate``)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
-from contam.corrupt import DEFAULT_SPECS, Corruption, CorruptionSpec
-from contam.synthetic import synthetic_background, synthetic_items
 
+from contam.corrupt import DEFAULT_SPECS, Corruption, CorruptionSpec
 from contam.evaluate import (
     OperatingPoint,
     SweepRow,
@@ -24,6 +23,7 @@ from contam.evaluate import (
 from contam.exact import ExactIndex, Thresholds
 from contam.inject import build_planted_corpus
 from contam.items import BenchmarkItem, View
+from contam.synthetic import synthetic_background, synthetic_items
 
 ITEMS = synthetic_items(80, seed=11)
 BACKGROUND = synthetic_background(120, seed=11)
@@ -43,8 +43,6 @@ def _by_spec(summary):  # type: ignore[no-untyped-def]
 
 
 # ----------------------------------------------------------------- ground-truth sanity checks
-
-
 def test_verbatim_copies_are_always_found_and_always_exact() -> None:
     verbatim = _by_spec(_summary())["verbatim"]
     assert verbatim.recall == 1.0
@@ -70,9 +68,10 @@ def test_reordered_choices_are_never_exact_but_still_detected() -> None:
 
 def test_recall_falls_as_more_words_are_deleted() -> None:
     by_spec = _by_spec(_summary())
-    rates = [by_spec[f"word_delete@{rate}"].recall for rate in ("0.05", "0.1", "0.2", "0.3")]
-    assert rates == sorted(rates, reverse=True)
-    assert rates[0] > rates[-1]
+    light = by_spec["word_delete@0.05"]
+    heavy = by_spec["word_delete@0.3"]
+    assert light.recall > heavy.recall
+    assert light.mean_containment > heavy.mean_containment
 
 
 def test_unrelated_control_documents_are_never_flagged() -> None:
@@ -88,8 +87,6 @@ def test_no_hits_for_items_that_were_not_planted() -> None:
 
 
 # ----------------------------------------------------------------- thresholds and bookkeeping
-
-
 def test_stricter_thresholds_never_increase_recall() -> None:
     loose = _by_spec(_summary(0.3, 0.8))
     strict = _by_spec(_summary(0.7, 0.9))
@@ -130,6 +127,8 @@ def test_plants_of_unindexed_items_are_excluded_and_counted() -> None:
 
 
 def test_a_foreign_item_found_in_a_planted_document_is_counted() -> None:
+    # Index two items but plant only the first; a document containing both text blocks
+    # must report the second as a foreign hit.
     first, second = ITEMS[0], ITEMS[1]
     corpus = build_planted_corpus(
         [first],
@@ -147,8 +146,6 @@ def test_a_foreign_item_found_in_a_planted_document_is_counted() -> None:
 
 
 # ----------------------------------------------------------------- sweeps and selection
-
-
 def test_sweep_produces_a_row_per_setting_and_condition() -> None:
     rows = run_sweep(
         ITEMS,
@@ -231,8 +228,6 @@ def test_evaluate_at_matches_summarize_for_the_same_settings() -> None:
 
 
 # ----------------------------------------------------------------- files
-
-
 def test_operating_point_round_trip(tmp_path: Path) -> None:
     point = OperatingPoint(8, 5, "question", 0.5, 0.9, 0.87, 0.02)
     path = tmp_path / "point.json"

@@ -1,13 +1,12 @@
-"""Tests for planted-corpus construction and its manifest (contam.inject), D-036."""
+"""Tests for planted-corpus construction and its manifest (``contam.inject``), D-036."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
-from contam.corrupt import Corruption, CorruptionSpec
-from contam.synthetic import synthetic_background, synthetic_items
 
+from contam.corrupt import Corruption, CorruptionSpec
 from contam.inject import (
     build_planted_corpus,
     read_manifest,
@@ -16,6 +15,7 @@ from contam.inject import (
     write_manifest,
 )
 from contam.items import BenchmarkItem
+from contam.synthetic import synthetic_background, synthetic_items
 
 ITEMS = synthetic_items(60, seed=5)
 BACKGROUND = synthetic_background(40, seed=5)
@@ -46,7 +46,8 @@ def test_every_plant_is_exactly_where_the_manifest_says() -> None:
 def test_verify_detects_a_tampered_document() -> None:
     corpus = _build()
     doc_id, text = corpus.documents[0]
-    corpus.documents[0] = (doc_id, text.replace(text[corpus.plants[0].offset], "#", 1))
+    offset = corpus.plants[0].offset
+    corpus.documents[0] = (doc_id, text[:offset] + "\u0001" + text[offset + 1 :])
     assert verify_plants(corpus)
 
 

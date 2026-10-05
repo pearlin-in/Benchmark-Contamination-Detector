@@ -1,8 +1,9 @@
-"""Tests for contam.stats.wilson_interval (D-014)."""
+"""Tests for ``contam.stats.wilson_interval`` (D-014)."""
 
 from __future__ import annotations
 
 import pytest
+
 from contam.stats import wilson_interval
 
 

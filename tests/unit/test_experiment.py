@@ -6,11 +6,11 @@ import json
 from pathlib import Path
 
 import pytest
-from contam.experiment import ExperimentConfig, run_experiment
-from contam.synthetic import synthetic_background, synthetic_items
 
 from contam.evaluate import load_operating_point
+from contam.experiment import ExperimentConfig, run_experiment
 from contam.inject import read_manifest
+from contam.synthetic import synthetic_background, synthetic_items
 
 pytestmark = pytest.mark.integration
 

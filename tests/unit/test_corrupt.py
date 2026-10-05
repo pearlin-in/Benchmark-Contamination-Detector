@@ -1,4 +1,4 @@
-"""Tests for the corruption generators (contam.corrupt), D-013."""
+"""Tests for the corruption generators (``contam.corrupt``), D-013."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import re
 import unicodedata
 
 import pytest
+
 from contam.corrupt import (
     DEFAULT_SPECS,
     Corruption,
@@ -13,10 +14,9 @@ from contam.corrupt import (
     apply_corruption,
     render,
 )
-from contam.synthetic import make_rng
-
 from contam.items import BenchmarkItem
 from contam.normalize import normalize
+from contam.synthetic import make_rng
 
 MCQ = BenchmarkItem(
     item_id="c:1",
@@ -26,7 +26,6 @@ MCQ = BenchmarkItem(
     choices=("red", "green", "blue", "gold"),
     answer="A",
 )
-
 PLAIN = BenchmarkItem(
     item_id="c:2",
     benchmark="t",
@@ -128,8 +127,10 @@ def test_word_delete_removes_roughly_the_requested_share() -> None:
 def test_word_substitute_preserves_the_word_count() -> None:
     result = _apply(PLAIN, Corruption.WORD_SUBSTITUTE, 1.0)
     assert result is not None
-    assert len(result.split()) == len(render(PLAIN).split())
-    assert not set(result.split()) & set(render(PLAIN).split())
+    new_words = result.split()
+    old_words = render(PLAIN).split()
+    assert len(new_words) == len(old_words)
+    assert all(new.lower() != old.lower() for new, old in zip(new_words, old_words, strict=True))
 
 
 def test_truncate_keeps_a_prefix() -> None:

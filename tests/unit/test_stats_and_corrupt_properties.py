@@ -5,14 +5,14 @@ from __future__ import annotations
 import string
 
 import pytest
-from contam.corrupt import DEFAULT_SPECS, Corruption, CorruptionSpec, apply_corruption, render
-from contam.stats import wilson_interval
-from contam.synthetic import make_rng
 from hypothesis import given
 from hypothesis import strategies as st
 
+from contam.corrupt import DEFAULT_SPECS, Corruption, CorruptionSpec, apply_corruption, render
 from contam.items import BenchmarkItem
 from contam.normalize import normalize
+from contam.stats import wilson_interval
+from contam.synthetic import make_rng
 
 pytestmark = pytest.mark.property
 

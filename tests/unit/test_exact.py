@@ -190,7 +190,7 @@ def test_scan_corpus_streams_hits_and_fills_stats() -> None:
         ("d3", None),
     ]
     stats = ScanStats()
-    hits = list(index.scan_corpus(docs, stats=stats))  # type: ignore[arg-type]
+    hits = list(index.scan_corpus(docs, stats=stats))
     assert [hit.doc_id for hit in hits] == ["d2"]
     assert stats.documents == 2
     assert stats.hits == 1
