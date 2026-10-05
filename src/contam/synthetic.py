@@ -1,47 +1,87 @@
-"""Synthetic data generation helpers for tests and CLI demos."""
+"""Deterministic synthetic data for tests, demos and offline smoke runs.
 
+Words are generated from consonant-vowel syllables, giving hundreds of thousands of
+distinct pseudo-words, so accidental n-gram overlap between unrelated texts is negligible.
+Nothing here depends on the network or on any real benchmark text.
+"""
+
+from __future__ import annotations
+
+import hashlib
 import random
-from typing import Any
+
+from contam.items import BenchmarkItem
+
+Document = tuple[str, str]
+
+_CONSONANTS = "bdfgklmnprstvz"
+_VOWELS = "aeiou"
 
 
-def make_rng(seed: int = 42) -> random.Random:
-    """Create a deterministic random number generator instance."""
-    return random.Random(seed)
+def make_rng(seed: int, *parts: str) -> random.Random:
+    """A ``random.Random`` seeded from ``(seed, parts)`` via a stable hash.
+
+    Only ``random()`` and ``randrange()`` are used anywhere in this project, because their
+    output is guaranteed stable across Python versions (D-035).
+    """
+    key = "|".join((str(seed), *parts)).encode("utf-8", "surrogatepass")
+    return random.Random(int.from_bytes(hashlib.blake2b(key, digest_size=8).digest(), "big"))  # noqa: S311
 
 
-def synthetic_background(n: int = 20, seed: int = 42) -> list[str]:
-    """Generate synthetic background web documents for testing."""
-    rng = make_rng(seed)
-    docs = []
-    topics = [
-        "Python programming language features and async frameworks.",
-        "World history and cultural evolution through trade routes.",
-        "Advances in renewable energy sources like solar and wind.",
-        "Culinary techniques for baking sourdough bread at home.",
-        "Basic mathematics, calculus principles, and geometry notes.",
-    ]
-    for i in range(n):
-        topic = rng.choice(topics)
-        docs.append(
-            f"Document ID doc_{i}: {topic} Additional filler text to simulate web crawl content {i}."
-        )
-    return docs
+def _word(rng: random.Random) -> str:
+    syllables = 2 + rng.randrange(2)
+    return "".join(
+        _CONSONANTS[rng.randrange(len(_CONSONANTS))] + _VOWELS[rng.randrange(len(_VOWELS))]
+        for _ in range(syllables)
+    )
 
 
-def synthetic_items(n: int = 10, seed: int = 42) -> list[dict[str, Any]]:
-    """Generate synthetic benchmark items for testing and evaluation."""
-    rng = make_rng(seed)
-    items = []
-    for i in range(n):
+def _sentence(rng: random.Random, low: int, high: int) -> str:
+    words = [_word(rng) for _ in range(low + rng.randrange(high - low + 1))]
+    words[0] = words[0].capitalize()
+    pieces = [word + ("," if rng.random() < 0.1 else "") for word in words[:-1]]
+    return " ".join([*pieces, words[-1]]) + "."
+
+
+def synthetic_background(n_docs: int, *, seed: int = 0) -> list[Document]:
+    """``n_docs`` documents of 3-6 paragraphs each, with ids ``bg:<i>``."""
+    documents: list[Document] = []
+    for index in range(n_docs):
+        rng = make_rng(seed, "background", str(index))
+        paragraphs = [
+            " ".join(_sentence(rng, 8, 18) for _ in range(3 + rng.randrange(4)))
+            for _ in range(3 + rng.randrange(4))
+        ]
+        documents.append((f"bg:{index}", "\n\n".join(paragraphs)))
+    return documents
+
+
+def synthetic_items(
+    n_items: int, *, seed: int = 0, choice_fraction: float = 0.5
+) -> list[BenchmarkItem]:
+    """``n_items`` benchmark-like items: long questions with numbers, some with choices."""
+    items: list[BenchmarkItem] = []
+    for index in range(n_items):
+        rng = make_rng(seed, "item", str(index))
+        words = [_word(rng) for _ in range(14 + rng.randrange(11))]
+        for _ in range(2):  # two numbers, so number-changing corruptions apply
+            number = rng.randrange(2, 999)
+            text = f"{number}.{1 + rng.randrange(9)}" if rng.random() < 0.3 else str(number)
+            words.insert(rng.randrange(len(words)), text)
+        question = " ".join(words) + "?"
+        choices: tuple[str, ...] = ()
+        if rng.random() < choice_fraction:
+            choices = tuple(
+                " ".join(_word(rng) for _ in range(1 + rng.randrange(3))) for _ in range(4)
+            )
         items.append(
-            {
-                "item_id": f"syn_{i}",
-                "benchmark": "synthetic_math",
-                "split": "test",
-                "question": f"What is {i} plus {i} multiplied by 3?",
-                "choices": ["A) " + str(i), "B) " + str(i * 3), "C) " + str(i * 4)],
-                "answer": "B",
-                "question_plus_choices": f"What is {i} plus {i} multiplied by 3? A) {i} B) {i * 3} C) {i * 4}",
-            }
+            BenchmarkItem(
+                item_id=f"synthetic:{index}",
+                benchmark="synthetic",
+                split="test",
+                question=question,
+                choices=choices,
+                answer="A" if choices else "",
+            )
         )
     return items

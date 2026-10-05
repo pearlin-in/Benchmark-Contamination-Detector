@@ -12,8 +12,10 @@ from __future__ import annotations
 import importlib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
+from contam.data.jsonl import read_jsonl
 from contam.items import BenchmarkItem
 
 _LETTERS = "ABCDEFGHIJ"
@@ -86,3 +88,23 @@ def load_benchmark(
     datasets = importlib.import_module("datasets")
     rows = datasets.load_dataset(spec.hf_path, spec.hf_config, split=split, revision=revision)
     return [spec.convert(row, index, split) for index, row in enumerate(rows)]
+
+
+def load_items_jsonl(path: str | Path, benchmark: str | None = None) -> list[BenchmarkItem]:
+    """Load items from a JSONL file with ``item_id`` and ``question`` (``choices`` optional).
+
+    Handy for offline runs, test fixtures and custom benchmarks.
+    """
+    name = benchmark or Path(path).stem
+    items: list[BenchmarkItem] = [
+        BenchmarkItem(
+            item_id=str(row["item_id"]),
+            benchmark=str(row.get("benchmark", name)),
+            split=str(row.get("split", "test")),
+            question=str(row["question"]),
+            choices=tuple(str(choice) for choice in row.get("choices", ())),
+            answer=str(row.get("answer", "")),
+        )
+        for row in read_jsonl(path)
+    ]
+    return items
