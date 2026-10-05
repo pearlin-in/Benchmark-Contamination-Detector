@@ -2,7 +2,7 @@
 
 This file records every non-trivial choice in the project: what was chosen, what else was considered, and **what evidence justified it**. It is the main place a reader sees that you understand *why*, not just *what*.
 
-Entries D-001 to D-018 come from `SCOPE.md` section 6. Entries D-028 to D-033 were added during roadmap phases 2-3. Each entry lists the **experiment that will confirm or change it**, and has a **Result** field that stays empty until you have actually run that experiment. **Never write a Result before running the experiment.** A result written in advance is the one thing this file must never contain.
+Entries D-001 to D-018 come from `SCOPE.md` section 6. Entries D-028 to D-033 were added during roadmap phases 2-3, D-034 to D-040 during phase 4, and D-041 to D-045 are the planned design for phase 5. Each entry lists the **experiment that will confirm or change it**, and has a **Result** field that stays empty until you have actually run that experiment. **Never write a Result before running the experiment.** A result written in advance is the one thing this file must never contain.
 
 IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the table near the end), which is why the numbering jumps from D-018 to D-028.
 
@@ -66,6 +66,18 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 | D-031 | Minimum item length defaults | Provisional |
 | D-032 | Symbols are separate tokens | Locked |
 | D-033 | Question+choices view and labelled options | Provisional |
+| D-034 | Dev/test split key is the normalized question text | Locked |
+| D-035 | Per-record deterministic randomness | Locked |
+| D-036 | One planted item per document; manifest stores no text | Locked |
+| D-037 | Control flags are an upper bound on the false-positive rate | Locked |
+| D-038 | Recall definition and unindexed items | Locked |
+| D-039 | Operating-point selection rule | Provisional |
+| D-040 | Scan once at a floor threshold, then re-threshold | Locked |
+| D-041 | Phase 5 purpose and hypothesis | Provisional |
+| D-042 | MinHash implementation and validation | Provisional |
+| D-043 | LSH banding and S-curve check | Provisional |
+| D-044 | Windowed fuzzy matching with exact verification | Provisional |
+| D-045 | Within-benchmark near-duplicate detection | Provisional |
 
 ---
 
@@ -106,7 +118,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Rationale:** GPT-3's methodology ignored case, punctuation and whitespace. Digits carry the identity of math word problems, so dropping them would create false positives. Keeping math symbols preserves the difference between problems that differ only in an operator.
 - **Implemented in:** `normalize` in `src/contam/normalize.py`; contract tests in `tests/unit/test_normalize.py` (cases tagged `[D-003]`) and `tests/property/test_normalize_properties.py`.
 - **Experiment:** Run the exact detector on the planted *dev* set under A, B, C. Compare recall on case/whitespace/punctuation corruptions and false-positive rate on control documents. Check how many GSM8K items collide with each other after normalization.
-- **Result:** *(empty)*
+- **Result:** *(partial)* On the planted test set (GSM8K + ARC-Challenge, 100 plants per condition, n=5, thresholds 0.3/0.9), deleting punctuation instead of spacing it out (`punct_delete`) gave recall 0.99 [0.95, 1.00], and case/whitespace/punctuation noise (`format_noise`) gave 1.00. Variants A and C were not compared and GSM8K self-collisions were not counted, so this experiment is unfinished.
 - **Tradeoff:** Punctuation becomes a space, so `1,000` and `3.5` become `1 000` and `3 5`, and `don't` becomes `don t`. This is consistent on both sides of the comparison but loses information, and it makes `3.5` and `3 5` indistinguishable.
 - **Revisit if:** LaTeX/MMLU math items behave badly, or number formats cause missed matches.
 
@@ -132,7 +144,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Rationale:** 8-grams appear in GPT-2-era analysis and 13-grams in GPT-3's; sweeping shows the tradeoff on your own data rather than assuming it.
 - **Implemented in:** `ExactIndex.build(n=...)`, `gpt3_style_ngram_size` and `ExactIndex.gpt3_style` in `src/contam/exact.py`.
 - **Experiment:** Grid over n x overlap threshold on the planted dev set: recall by corruption type, false-positive rate on controls. Then count real hits per n on tier-S corpus data.
-- **Result:** *(empty)*
+- **Result:** *(partial)* With the grid n in {5, 8, 13}, partial in {0.3, 0.5, 0.7}, near in {0.8, 0.9}, both the real-data run and the synthetic demo selected n=5 with thresholds 0.3/0.9 on dev data: the smallest n and the loosest partial threshold in the grid. The optimum may lie outside the grid, so the grid is being widened (n=3 and 4). Real-hit counts per n are not yet measured.
 - **Tradeoff:** Reporting three n values complicates the headline; pick one and show the others in an appendix.
 - **Revisit if:** short benchmark items (ARC) make the chosen n unusable.
 
@@ -193,7 +205,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Status:** Provisional | **Phase:** 5
 - **Context:** Exact n-gram overlap collapses when a few words change.
 - **Options:** one-stage MinHash on whole documents; two-stage (LSH candidates on sliding windows, then exact containment verification); embeddings.
-- **Decision:** Two-stage, windows sized to the item length.
+- **Decision:** Two-stage, windows sized to the item length. Refined in D-041 to D-045 after the phase 4 results.
 - **Rationale:** Whole-document signatures are too coarse for short items; verification protects precision. Implement MinHash yourself and cross-check against `datasketch`.
 - **Experiment:** Vary `num_perm`, bands x rows, and window size. Plot the LSH S-curve (theory vs. empirical). Compare recall by corruption against M1 and measure time/memory cost.
 - **Result:** *(empty)*
@@ -342,6 +354,95 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Options:** keep as is and report the limitation; also match with labels removed; rely on the question-only view for exact matching.
 - **Decision:** Keep as is for now; report both views. Revisit after the planted-data experiments.
 - **Experiment:** Plant MCQ items with and without option labels; compare recall in both views.
+- **Result:** *(partial)* Question+choices view, n=5, thresholds 0.3/0.9, 100 plants per condition on the test set: `choice_shuffle` 0.98 [0.93, 0.99], `labelled_dot` 0.96 [0.90, 0.98], `labelled_paren` 0.94 [0.88, 0.97]. Option labels cost about 2-4 points of recall at this operating point. The question-only view and the exact-match counts for these conditions have not been compared yet.
+
+### D-034: Dev/test split key is the normalized question text
+- **Status:** Locked | **Phase:** 4
+- **Decision:** Items with the same normalized question always land on the same side of the split (refines D-011). Background documents are split by id so dev and test never share host text.
+- **Rationale:** Splitting by item id would let duplicate questions leak from dev into test and inflate test results.
+- **Implemented in:** `src/contam/split.py`
+- **Experiment:** Report how many duplicate-question groups each benchmark has.
+- **Result:** *(empty)*
+
+### D-035: Per-record deterministic randomness
+- **Status:** Locked | **Phase:** 4
+- **Decision:** Every random choice uses a `random.Random` seeded from a hash of (seed, spec, item id), and only `random()` and `randrange()` (own Fisher-Yates shuffle).
+- **Rationale:** Adding a spec or reordering items never changes other records, and output is stable across Python versions.
+- **Implemented in:** `make_rng` in `src/contam/synthetic.py`; `src/contam/corrupt.py`
+- **Result:** n/a
+
+### D-036: One planted item per document; manifest stores no text
+- **Status:** Locked | **Phase:** 4
+- **Decision:** Each plant sits in its own document at a paragraph (or word) boundary, surrounded by blank lines. The manifest stores offsets, lengths and digests only.
+- **Implemented in:** `src/contam/inject.py` (`verify_plants` checks every offset)
+- **Result:** n/a
+
+### D-037: Control flags are an upper bound on the false-positive rate
+- **Status:** Locked | **Phase:** 4
+- **Context:** On real background text, a "false positive" in a control document may be genuine contamination.
+- **Decision:** Report control flag rate with a Wilson interval and call it an upper bound. Do NOT screen controls with the detector under test (that would make precision look perfect by construction). Real precision comes from hand-labelling (D-012).
+- **Result:** Real-data run: 0 of 500 control documents flagged (Wilson upper bound 0.008). No setting ever flagged a control, so the bound never constrained the selection in D-039.
+
+### D-038: Recall definition and unindexed items
+- **Status:** Locked | **Phase:** 4
+- **Decision:** A plant is detected if its (document, item) pair is reported at or above the thresholds. Plants of items the index skipped (too short, all template n-grams) are excluded from recall and counted as `unindexed`.
+- **Implemented in:** `summarize` in `src/contam/evaluate.py`
+- **Result:** Real-data run: 0 unindexed plants (every planted item was indexable at n=5).
+
+### D-039: Operating-point selection rule
+- **Status:** Provisional | **Phase:** 4
+- **Decision:** On dev data only, maximize macro recall (every corruption condition weighted equally) among settings whose Wilson UPPER bound on the control flag rate is at most 0.05. Ties prefer stricter thresholds, then larger n, then no stop-n-gram filter. The point is written to `operating_point.json` before the test corpus is built.
+- **Experiment:** Compare the chosen point against the best-recall point without the false-positive bound.
+- **Result:** *(partial)* On dev data the rule selected n=5, view question_choices, partial 0.3, near_duplicate 0.9 in both the real-data run and the synthetic demo. Because the false-positive bound never bound (D-037), the rule reduced to maximizing macro recall, which favours the loosest settings, and the choice sits on the grid boundary. Treat it as provisional until precision is measured on hand-labelled real hits (D-012). The comparison without the bound has not been run.
+- **Revisit if:** macro recall hides a condition you care about (try a minimum-recall rule per condition).
+
+### D-040: Scan once at a floor threshold, then re-threshold
+- **Status:** Locked | **Phase:** 4
+- **Decision:** Scan each corpus once with thresholds near zero, store containment and the exact flag per (document, item), and apply any thresholds afterwards.
+- **Rationale:** Every threshold setting sees identical data and sweeps cost almost nothing.
+- **Implemented in:** `score_corpus`, `summarize` in `src/contam/evaluate.py`
+- **Result:** n/a
+
+
+### D-041: Phase 5 purpose and hypothesis
+- **Status:** Provisional | **Phase:** 5
+- **Context:** Phase 4 showed recall collapsing at 20-30% word edits. Deleting a fraction p of words destroys every n-gram window that touches a deleted word, so containment is expected to be about (1 - p)^n. For n=5 that is 0.33 at p=0.2 and 0.17 at p=0.3, against observed recall of 0.51 and 0.10 at a 0.3 threshold. MinHash over the *same* n-grams cannot change this arithmetic.
+- **Hypothesis:** Heavy-edit recall comes from smaller shingles (n=2 or 3), which predict containment of 0.64/0.49 (n=2) and 0.51/0.34 (n=3) at p=0.2/0.3, not from MinHash itself. MinHash+LSH adds value for scale and for item-to-item near-duplicate search.
+- **Decision:** Treat Phase 5 as a comparison, not an assumed improvement: evaluate exact containment at n=2 and n=3, and the fuzzy MinHash method, on the same planted harness, by condition, with precision on controls and runtime.
+- **Experiment:** Compare predicted (1 - p)^n against observed containment per n; compare recall by condition for exact n=2, 3, 5 and for the fuzzy method.
+- **Result:** *(empty)*
+- **Tradeoff:** If exact n=3 matches the fuzzy method at lower cost, that is the finding, and the fuzzy method is reported as a scaling option.
+- **Revisit if:** precision on controls collapses at n=2 or 3.
+
+### D-042: MinHash implementation and validation
+- **Status:** Provisional | **Phase:** 5
+- **Decision:** Implement MinHash directly: universal hash functions h_i(x) = (a_i * x + b_i) mod (2^61 - 1) applied to the stable shingle hashes from `ngrams.py`, with 128 permutations by default. Cross-check against `datasketch` (dev dependency only) and against exact Jaccard.
+- **Rationale:** The fraction of agreeing minimum values is an unbiased Jaccard estimate with standard deviation sqrt(J(1-J)/k), at most 0.044 for k=128. Implementing it yourself and validating it is stronger evidence of understanding than importing it.
+- **Experiment:** On random set pairs, check the estimate lies within 4 standard deviations of exact Jaccard; check agreement with `datasketch`; test determinism across processes.
+- **Result:** *(empty)*
+- **Revisit if:** estimates are visibly biased (a bug, not a result).
+
+### D-043: LSH banding and S-curve check
+- **Status:** Provisional | **Phase:** 5
+- **Decision:** Split signatures into b bands of r rows (b * r = number of permutations). A pair becomes a candidate with probability 1 - (1 - s^r)^b at similarity s; the curve rises steepest near (1/b)^(1/r). For example, 128 permutations as 32 bands of 4 rows rises near similarity 0.42. Choose b and r from the target similarity, then verify.
+- **Experiment:** Plot the theoretical S-curve against the empirical candidate rate on pairs of known similarity.
+- **Result:** *(empty)*
+- **Revisit if:** the empirical curve disagrees with theory (a bug).
+
+### D-044: Windowed fuzzy matching with exact verification
+- **Status:** Provisional | **Phase:** 5
+- **Decision:** Slide windows sized to the item's token length across each document. A window signature is the elementwise minimum of the per-shingle signatures it contains (computed with a rolling minimum, so each shingle is hashed once). LSH proposes candidate (window, item) pairs; each candidate is verified by exact containment of the item's word k-shingles (k = 2 or 3, decided in D-046) and kept only above a verification threshold tuned on dev data (D-011).
+- **Rationale:** Whole-document signatures are too coarse for short items; verification keeps precision high.
+- **Experiment:** Run on the planted harness and compare recall by condition against exact n=2, 3 and 5; measure documents per second and memory.
+- **Result:** *(empty)*
+- **Tradeoff:** Much slower than the exact detector; report the cost honestly.
+- **Revisit if:** exact n=3 gives the same recall at lower cost (see D-041).
+
+### D-045: Within-benchmark near-duplicate detection
+- **Status:** Provisional | **Phase:** 5
+- **Decision:** Use MinHash+LSH on benchmark items to find near-duplicate items within a benchmark and between its splits (for example GSM8K train versus test), using word 3-shingles at Jaccard thresholds 0.5, 0.7 and 0.9. Hand-check a sample of 30 pairs.
+- **Rationale:** This is the natural use of LSH (item-to-item similarity at scale) and gives real findings without any corpus. It also answers the D-029 experiment.
+- **Experiment:** Report the number of near-duplicate pairs per threshold for each benchmark and split pair.
 - **Result:** *(empty)*
 
 ---
@@ -361,6 +462,7 @@ These don't exist yet because they depend on evidence. Create each entry when yo
 | D-025 | Multiprocessing design and deterministic merge | before the full scan |
 | D-026 | Hit-list output schema | before the full scan |
 | D-027 | Whether to run the FineWeb-Edu comparison (RQ5) | after the main scan |
+| D-046 | Final M2 parameters (shingle size, permutations, bands x rows, stride, verification threshold) | after the M2 experiments |
 
 ---
 
@@ -368,5 +470,5 @@ These don't exist yet because they depend on evidence. Create each entry when yo
 
 | Date | What changed | Why | Entry |
 | --- | --- | --- | --- |
-|  |  |  |  |
+| 2026-10-05 | Phase 5 scope refined: the fuzzy method is compared against exact n=2 and n=3, and within-benchmark duplicate detection is added | Phase 4 showed recall tracks (1 - p)^n, so MinHash over the same n-grams cannot help by itself | D-041 |
 
