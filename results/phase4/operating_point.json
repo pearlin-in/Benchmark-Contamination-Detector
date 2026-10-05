@@ -1,14 +1,14 @@
 {
   "context": {
     "max_control_fpr_upper": 0.05,
-    "n_dev_items": 156,
-    "n_dev_plants": 1949,
+    "n_dev_items": 1221,
+    "n_dev_plants": 2000,
     "seed": 0,
     "selected_on": "dev"
   },
   "operating_point": {
     "control_fpr_upper": 0.007624618530903363,
-    "macro_recall": 0.8654999999999999,
+    "macro_recall": 0.8634999999999999,
     "n": 5,
     "near_duplicate": 0.9,
     "partial": 0.3,

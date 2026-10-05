@@ -110,12 +110,15 @@
   },
   "contam_version": "0.1.0",
   "extra": {
-    "background": "synthetic",
-    "benchmarks": [],
-    "n_items": 300
+    "background": "fineweb",
+    "benchmarks": [
+      "arc_challenge",
+      "gsm8k"
+    ],
+    "n_items": 2491
   },
-  "git_commit": "974b1c470eb66a9ed15f017a959d4918290ae8b0",
+  "git_commit": "f3d55e12f3f58b6181aecd0c86c8920060f91138",
   "platform": "Windows-11-10.0.26200-SP0",
   "python": "3.12.10",
-  "timestamp_utc": "2026-10-05T06:48:17+00:00"
+  "timestamp_utc": "2026-10-05T07:08:20+00:00"
 }
