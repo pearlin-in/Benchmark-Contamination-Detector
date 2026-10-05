@@ -1,36 +1,33 @@
-"""Statistical utility functions (e.g., confidence intervals)."""
+"""Small statistics helpers (DECISIONS.md, D-014)."""
+
+from __future__ import annotations
 
 import math
 
 
-def wilson_interval(successes: int, n: int, confidence: float = 0.95) -> tuple[float, float]:
-    """Calculate the Wilson score confidence interval for a binomial proportion.
+def wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float, float]:
+    """Wilson score interval for a proportion (95% by default).
 
-    Args:
-        successes: Number of successful trials.
-        n: Total number of trials.
-        confidence: Confidence level (default 0.95).
+    Unlike the textbook normal approximation, it behaves well for small samples and for
+    proportions near 0 or 1, which is exactly where detector recall and false-positive
+    rates live. With ``total == 0`` nothing is known, so the interval is (0, 1).
 
-    Returns:
-        A tuple of (lower_bound, upper_bound).
+    Raises:
+        ValueError: if the counts are inconsistent.
     """
-    if n == 0:
-        return (0.0, 0.0)
-
-    # Approximate z-score for common confidence levels
-    # For 0.95, z ~ 1.959963984540054
-    if abs(confidence - 0.95) < 1e-3:
-        z = 1.959963984540054
-    else:
-        # Simple approximation or normal quantile fallback
-        # (For rigorous usage, standard normal CDF inverse can be used, but standard z suffices)
-        z = 1.96
-
-    p_hat = successes / n
-    denominator = 1 + (z**2) / n
-    center = (p_hat + (z**2) / (2 * n)) / denominator
-    margin = z * math.sqrt((p_hat * (1 - p_hat) / n) + ((z**2) / (4 * (n**2)))) / denominator
-
-    lower = max(0.0, center - margin)
-    upper = min(1.0, center + margin)
-    return (lower, upper)
+    if total < 0 or successes < 0 or successes > total:
+        raise ValueError(f"invalid counts: successes={successes}, total={total}")
+    if total == 0:
+        return 0.0, 1.0
+    proportion = successes / total
+    z_squared = z * z
+    denominator = 1 + z_squared / total
+    center = (proportion + z_squared / (2 * total)) / denominator
+    half_width = (
+        z * math.sqrt(proportion * (1 - proportion) / total + z_squared / (4 * total * total))
+    ) / denominator
+    # Exactly 0 or total successes pin one end of the interval; floating-point error must
+    # not leave it a hair away from 0 or 1.
+    low = 0.0 if successes == 0 else max(0.0, center - half_width)
+    high = 1.0 if successes == total else min(1.0, center + half_width)
+    return low, high

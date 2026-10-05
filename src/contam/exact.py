@@ -240,6 +240,11 @@ class ExactIndex:
         return sum(len(entry.item_ids) for entry in self._entries)
 
     @property
+    def indexed_item_ids(self) -> frozenset[str]:
+        """Ids of every item that can be detected (skipped items are not included)."""
+        return frozenset(item_id for entry in self._entries for item_id in entry.item_ids)
+
+    @property
     def ngram_sizes(self) -> tuple[int, ...]:
         return tuple(sorted(self._tables))
 
@@ -258,7 +263,7 @@ class ExactIndex:
 
     def scan_corpus(
         self,
-        docs: Iterable[tuple[str, str]],
+        docs: Iterable[tuple[str, object]],
         thresholds: Thresholds | None = None,
         stats: ScanStats | None = None,
     ) -> Iterator[Hit]:
