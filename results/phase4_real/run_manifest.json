@@ -1,0 +1,126 @@
+{
+  "config": {
+    "dev_fraction": 0.5,
+    "items_per_spec": 100,
+    "max_control_fpr_upper": 0.05,
+    "max_host_chars": 4000,
+    "n_controls": 500,
+    "near_duplicates": [
+      0.8,
+      0.9
+    ],
+    "ns": [
+      2,
+      3,
+      4,
+      5,
+      8
+    ],
+    "partials": [
+      0.3,
+      0.5,
+      0.7
+    ],
+    "primary_view": "question_choices",
+    "seed": 0,
+    "specs": [
+      {
+        "intensity": null,
+        "kind": "verbatim"
+      },
+      {
+        "intensity": null,
+        "kind": "format_noise"
+      },
+      {
+        "intensity": null,
+        "kind": "punct_delete"
+      },
+      {
+        "intensity": 0.05,
+        "kind": "word_delete"
+      },
+      {
+        "intensity": 0.1,
+        "kind": "word_delete"
+      },
+      {
+        "intensity": 0.2,
+        "kind": "word_delete"
+      },
+      {
+        "intensity": 0.3,
+        "kind": "word_delete"
+      },
+      {
+        "intensity": 0.05,
+        "kind": "word_substitute"
+      },
+      {
+        "intensity": 0.1,
+        "kind": "word_substitute"
+      },
+      {
+        "intensity": 0.2,
+        "kind": "word_substitute"
+      },
+      {
+        "intensity": 0.3,
+        "kind": "word_substitute"
+      },
+      {
+        "intensity": 0.8,
+        "kind": "truncate"
+      },
+      {
+        "intensity": 0.6,
+        "kind": "truncate"
+      },
+      {
+        "intensity": null,
+        "kind": "number_change"
+      },
+      {
+        "intensity": null,
+        "kind": "choice_shuffle"
+      },
+      {
+        "intensity": null,
+        "kind": "labelled_dot"
+      },
+      {
+        "intensity": null,
+        "kind": "labelled_paren"
+      },
+      {
+        "intensity": null,
+        "kind": "html_wrap"
+      },
+      {
+        "intensity": 1,
+        "kind": "html_split"
+      },
+      {
+        "intensity": 3,
+        "kind": "html_split"
+      }
+    ],
+    "stop_ks": [
+      null
+    ],
+    "test_sweep": true
+  },
+  "contam_version": "0.1.0",
+  "extra": {
+    "background": "fineweb",
+    "benchmarks": [
+      "arc_challenge",
+      "gsm8k"
+    ],
+    "n_items": 2491
+  },
+  "git_commit": "b90b013190ff1dd1b5228af6c901fb00d014edeb",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.10",
+  "timestamp_utc": "2026-10-06T20:16:53+00:00"
+}

@@ -1,0 +1,18 @@
+{
+  "context": {
+    "max_control_fpr_upper": 0.05,
+    "n_dev_items": 1221,
+    "n_dev_plants": 2000,
+    "seed": 0,
+    "selected_on": "dev"
+  },
+  "operating_point": {
+    "control_fpr_upper": 0.04147745969189818,
+    "macro_recall": 0.9994999999999999,
+    "n": 2,
+    "near_duplicate": 0.9,
+    "partial": 0.3,
+    "stop_ngram_k": null,
+    "view": "question_choices"
+  }
+}
