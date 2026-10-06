@@ -22,7 +22,9 @@ def test_no_arguments_prints_help_and_succeeds(capsys: pytest.CaptureFixture[str
     assert "usage:" in capsys.readouterr().out
 
 
-def test_evaluate_demo_runs_end_to_end(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_evaluate_demo_runs_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     out = tmp_path / "run"
     code = main(
         [
@@ -79,3 +81,26 @@ def test_evaluate_reports_infeasible_settings_without_a_traceback(
     )
     assert code == 2
     assert "error:" in capsys.readouterr().err
+
+
+def test_compare_demo_prints_a_table_and_writes_a_csv(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = main(
+        [
+            "compare", "--demo", "--demo-items", "60", "--background-docs", "60",
+            "--items-per-spec", "3", "--controls", "10", "--exact-n", "3",
+            "--fuzzy-k", "3", "--out", str(tmp_path),
+        ]
+    )  # fmt: skip
+    assert code == 0
+    output = capsys.readouterr().out
+    assert "exact n=3" in output
+    assert "fuzzy k=3" in output
+    assert (tmp_path / "compare.csv").is_file()
+
+
+def test_dupes_requires_a_benchmark() -> None:
+    with pytest.raises(SystemExit) as excinfo:
+        main(["dupes"])
+    assert excinfo.value.code == 2

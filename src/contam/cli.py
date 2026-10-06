@@ -3,17 +3,37 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 from contam import __version__
+from contam.compare import compare_methods, write_compare_csv
+from contam.corrupt import DEFAULT_SPECS
 from contam.data.benchmarks import BENCHMARKS, load_benchmark, load_items_jsonl
 from contam.data.corpus import stream_documents
+from contam.dupes import find_near_duplicates
 from contam.experiment import ExperimentConfig, run_experiment
-from contam.inject import Document
+from contam.inject import Document, build_planted_corpus
 from contam.items import BenchmarkItem, View
+from contam.split import split_documents, split_items
 from contam.synthetic import synthetic_background, synthetic_items
+
+
+def _add_source_args(parser: argparse.ArgumentParser) -> None:
+    source = parser.add_argument_group("benchmark items (choose at least one)")
+    source.add_argument("--benchmark", action="append", choices=sorted(BENCHMARKS), default=[])
+    source.add_argument("--items-jsonl", action="append", default=[], metavar="PATH")
+    source.add_argument("--demo", action="store_true", help="use synthetic items (no network)")
+    source.add_argument("--demo-items", type=int, default=300)
+    source.add_argument("--split", default="test", help="benchmark split to load")
+    source.add_argument("--max-items", type=int, default=None, help="cap items per benchmark")
+    background = parser.add_argument_group("background corpus")
+    background.add_argument(
+        "--background", choices=("synthetic", "fineweb"), default="synthetic"
+    )
+    background.add_argument("--background-docs", type=int, default=2000)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,18 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
             "false-positive rate on a held-out test half (planted-ground-truth evaluation)."
         ),
     )
-    source = evaluate.add_argument_group("benchmark items (choose at least one)")
-    source.add_argument("--benchmark", action="append", choices=sorted(BENCHMARKS), default=[])
-    source.add_argument("--items-jsonl", action="append", default=[], metavar="PATH")
-    source.add_argument("--demo", action="store_true", help="use synthetic items (no network)")
-    source.add_argument("--demo-items", type=int, default=300)
-    source.add_argument("--split", default="test", help="benchmark split to load")
-    source.add_argument("--max-items", type=int, default=None, help="cap items per benchmark")
-
-    background = evaluate.add_argument_group("background corpus")
-    background.add_argument("--background", choices=("synthetic", "fineweb"), default="synthetic")
-    background.add_argument("--background-docs", type=int, default=2000)
-
+    _add_source_args(evaluate)
     design = evaluate.add_argument_group("experiment design")
     design.add_argument("--items-per-spec", type=int, default=100)
     design.add_argument("--controls", type=int, default=500)
@@ -53,6 +62,40 @@ def build_parser() -> argparse.ArgumentParser:
     design.add_argument("--seed", type=int, default=0)
     design.add_argument("--out", type=Path, default=Path("results/phase4"))
     design.add_argument("--no-plots", action="store_true")
+
+    compare = commands.add_parser(
+        "compare",
+        help="compare exact n-gram containment with fuzzy MinHash matching",
+        description=(
+            "Run several detectors on the same held-out planted corpus with one fixed "
+            "threshold (not tuned on this data) and print recall by corruption condition."
+        ),
+    )
+    _add_source_args(compare)
+    study = compare.add_argument_group("comparison design")
+    study.add_argument("--items-per-spec", type=int, default=50)
+    study.add_argument("--controls", type=int, default=300)
+    study.add_argument("--exact-n", type=int, action="append", dest="exact_ns", default=None)
+    study.add_argument("--fuzzy-k", type=int, action="append", dest="fuzzy_ks", default=None)
+    study.add_argument("--threshold", type=float, default=0.3)
+    study.add_argument("--num-perm", type=int, default=64)
+    study.add_argument("--bands", type=int, default=32)
+    study.add_argument("--seed", type=int, default=0)
+    study.add_argument("--out", type=Path, default=Path("results/phase5_compare"))
+
+    dupes = commands.add_parser(
+        "dupes",
+        help="find near-duplicate benchmark items with MinHash + LSH",
+        description="Near-duplicate items within one split, or between two splits.",
+    )
+    dupes.add_argument("--benchmark", choices=sorted(BENCHMARKS), required=True)
+    dupes.add_argument("--split-a", default="test")
+    dupes.add_argument("--split-b", default=None, help="compare split A against this split")
+    dupes.add_argument("--threshold", type=float, default=0.5, help="minimum Jaccard similarity")
+    dupes.add_argument("--k", type=int, default=3, help="word shingle size")
+    dupes.add_argument("--num-perm", type=int, default=128)
+    dupes.add_argument("--show", type=int, default=10, help="print the top N pairs")
+    dupes.add_argument("--out", type=Path, default=None, help="write all pairs to this CSV")
     return parser
 
 
@@ -122,11 +165,98 @@ def _run_evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_compare(args: argparse.Namespace) -> int:
+    items = _collect_items(args)
+    if not items:
+        print("error: provide --benchmark, --items-jsonl or --demo", file=sys.stderr)
+        return 2
+    try:
+        _, test_items = split_items(items, 0.5, args.seed)
+        _, test_background = split_documents(_collect_background(args), 0.5, args.seed)
+        corpus = build_planted_corpus(
+            test_items,
+            test_background,
+            DEFAULT_SPECS,
+            items_per_spec=args.items_per_spec,
+            n_controls=args.controls,
+            seed=args.seed,
+        )
+        rows = compare_methods(
+            items,
+            corpus,
+            exact_ns=tuple(args.exact_ns) if args.exact_ns else (2, 3, 5),
+            fuzzy_ks=tuple(args.fuzzy_ks) if args.fuzzy_ks else (3,),
+            threshold=args.threshold,
+            num_perm=args.num_perm,
+            bands=args.bands,
+            seed=args.seed,
+        )
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    args.out.mkdir(parents=True, exist_ok=True)
+    write_compare_csv(args.out / "compare.csv", rows)
+
+    methods = list(dict.fromkeys(row.method for row in rows))
+    specs = list(dict.fromkeys(row.spec for row in rows))
+    recall = {(row.method, row.spec): row.recall for row in rows}
+    print(f"threshold {args.threshold} (fixed, not tuned here); recall on the held-out test split")
+    print(f"{'condition':24}" + "".join(f"{method:>13}" for method in methods))
+    for spec in specs:
+        print(f"{spec:24}" + "".join(f"{recall[(m, spec)]:>13.2f}" for m in methods))
+    first = {row.method: row for row in rows}
+    flagged = "".join(f"{first[m].control_flagged:>13}" for m in methods)
+    seconds = "".join(f"{first[m].seconds:>13.1f}" for m in methods)
+    print(f"{'controls flagged':24}{flagged}")
+    print(f"{'seconds':24}{seconds}")
+    print(f"artifacts written to {args.out}")
+    return 0
+
+
+def _run_dupes(args: argparse.Namespace) -> int:
+    items_a = load_benchmark(args.benchmark, split=args.split_a)
+    items_b = load_benchmark(args.benchmark, split=args.split_b) if args.split_b else None
+    try:
+        pairs = find_near_duplicates(
+            items_a,
+            items_b,
+            k=args.k,
+            jaccard_threshold=args.threshold,
+            num_perm=args.num_perm,
+        )
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    scope = f"{args.split_a} vs {args.split_b}" if args.split_b else f"within {args.split_a}"
+    print(f"{args.benchmark} ({scope}): {len(items_a)} items")
+    for level in (0.5, 0.7, 0.9):
+        if level >= args.threshold:
+            count = sum(pair.jaccard >= level for pair in pairs)
+            print(f"  near-duplicate pairs with Jaccard >= {level}: {count}")
+    text = {item.item_id: item.question for item in [*items_a, *(items_b or [])]}
+    for pair in pairs[: args.show]:
+        print(f"{pair.jaccard:.2f}  {pair.id_a} ~ {pair.id_b}")
+        print(f"      {text[pair.id_a][:90]!r}")
+        print(f"      {text[pair.id_b][:90]!r}")
+    if args.out is not None:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        with args.out.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle, lineterminator="\n")
+            writer.writerow(["id_a", "id_b", "jaccard"])
+            writer.writerows((pair.id_a, pair.id_b, f"{pair.jaccard:.4f}") for pair in pairs)
+        print(f"wrote {len(pairs)} pairs to {args.out}")
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command == "evaluate":
         return _run_evaluate(args)
+    if args.command == "compare":
+        return _run_compare(args)
+    if args.command == "dupes":
+        return _run_dupes(args)
     parser.print_help()
     return 0
 
