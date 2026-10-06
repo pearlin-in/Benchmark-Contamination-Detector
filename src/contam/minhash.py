@@ -68,7 +68,7 @@ def candidate_probability(similarity: float, bands: int, rows: int) -> float:
 
 def lsh_threshold(bands: int, rows: int) -> float:
     """Similarity near which the S-curve rises most steeply."""
-    return (1.0 / bands) ** (1.0 / rows)
+    return float((1.0 / bands) ** (1.0 / rows))
 
 
 def best_banding(threshold: float, num_perm: int) -> tuple[int, int]:

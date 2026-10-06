@@ -14,7 +14,7 @@ Expectation (D-041): with word k-shingles, a fraction p of deleted words leaves 
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
 from contam.exact import SkippedItem
@@ -169,4 +169,3 @@ class FuzzyIndex:
         for doc_id, text in docs:
             if isinstance(text, str):
                 yield from self.scan_document(doc_id, text, min_containment)
-

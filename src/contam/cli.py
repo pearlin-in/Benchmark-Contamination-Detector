@@ -30,9 +30,7 @@ def _add_source_args(parser: argparse.ArgumentParser) -> None:
     source.add_argument("--split", default="test", help="benchmark split to load")
     source.add_argument("--max-items", type=int, default=None, help="cap items per benchmark")
     background = parser.add_argument_group("background corpus")
-    background.add_argument(
-        "--background", choices=("synthetic", "fineweb"), default="synthetic"
-    )
+    background.add_argument("--background", choices=("synthetic", "fineweb"), default="synthetic")
     background.add_argument("--background-docs", type=int, default=2000)
 
 

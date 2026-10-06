@@ -22,9 +22,7 @@ def test_no_arguments_prints_help_and_succeeds(capsys: pytest.CaptureFixture[str
     assert "usage:" in capsys.readouterr().out
 
 
-def test_evaluate_demo_runs_end_to_end(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_evaluate_demo_runs_end_to_end(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     out = tmp_path / "run"
     code = main(
         [
