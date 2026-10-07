@@ -69,10 +69,13 @@ class EvalSummary:
         return sum(scored) / len(scored) if scored else 0.0
 
 
-def score_corpus(index: ExactIndex, corpus: PlantedCorpus) -> Scores:
-    """Scan every document once at the floor threshold."""
+def score_corpus(
+    index: ExactIndex, corpus: PlantedCorpus, window_slack: float | None = None
+) -> Scores:
+    """Scan every document once at the floor threshold (optionally window-localized)."""
     return {
-        (hit.doc_id, hit.item_id): hit for hit in index.scan_corpus(corpus.documents, SCAN_FLOOR)
+        (hit.doc_id, hit.item_id): hit
+        for hit in index.scan_corpus(corpus.documents, SCAN_FLOOR, window_slack=window_slack)
     }
 
 
@@ -172,10 +175,16 @@ class SweepRow:
     control_fpr_high: float
     foreign_hits: int
     unindexed: int
+    window_slack: float | None = None
 
 
 def rows_from_summary(
-    summary: EvalSummary, *, n: int, stop_ngram_k: int | None, view: View
+    summary: EvalSummary,
+    *,
+    n: int,
+    stop_ngram_k: int | None,
+    view: View,
+    window_slack: float | None = None,
 ) -> list[SweepRow]:
     return [
         SweepRow(
@@ -201,6 +210,7 @@ def rows_from_summary(
             control_fpr_high=summary.control_fpr_high,
             foreign_hits=summary.foreign_hits,
             unindexed=summary.unindexed,
+            window_slack=window_slack,
         )
         for c in summary.conditions
     ]
@@ -215,24 +225,31 @@ def run_sweep(
     views: Sequence[View] = (View.QUESTION_CHOICES, View.QUESTION),
     partials: Sequence[float] = (0.3, 0.5, 0.7),
     near_duplicates: Sequence[float] = (0.8, 0.9),
+    window_slacks: Sequence[float | None] = (None,),
 ) -> list[SweepRow]:
-    """Evaluate every combination of n, stop filter, view and thresholds on one corpus.
+    """Evaluate every combination of n, stop filter, view, window and thresholds.
 
     The index is built from ``items`` (the whole benchmark), exactly as a real scan would.
+    ``None`` in ``window_slacks`` means whole-document containment.
     """
     rows: list[SweepRow] = []
     for view in views:
         for stop_k in stop_ks:
             for n in ns:
                 index = ExactIndex.build(items, view=view, n=n, stop_ngram_k=stop_k)
-                scores = score_corpus(index, corpus)
                 indexed = index.indexed_item_ids
-                for partial in partials:
-                    for near in near_duplicates:
-                        if partial > near:
-                            continue
-                        summary = summarize(corpus, scores, Thresholds(partial, near), indexed)
-                        rows.extend(rows_from_summary(summary, n=n, stop_ngram_k=stop_k, view=view))
+                for slack in window_slacks:
+                    scores = score_corpus(index, corpus, slack)
+                    for partial in partials:
+                        for near in near_duplicates:
+                            if partial > near:
+                                continue
+                            summary = summarize(corpus, scores, Thresholds(partial, near), indexed)
+                            rows.extend(
+                                rows_from_summary(
+                                    summary, n=n, stop_ngram_k=stop_k, view=view, window_slack=slack
+                                )
+                            )
     return rows
 
 
@@ -248,6 +265,7 @@ class OperatingPoint:
     near_duplicate: float
     macro_recall: float
     control_fpr_upper: float
+    window_slack: float | None = None
 
 
 def select_operating_point(
@@ -263,22 +281,23 @@ def select_operating_point(
     Raises:
         ValueError: if no setting satisfies the false-positive bound.
     """
-    groups: dict[tuple[int, int | None, str, float, float], list[SweepRow]] = {}
+    groups: dict[tuple[int, int | None, str, float, float, float | None], list[SweepRow]] = {}
     for row in rows:
         if row.view != str(view):
             continue
-        key = (row.n, row.stop_ngram_k, row.view, row.partial, row.near_duplicate)
+        key = (row.n, row.stop_ngram_k, row.view, row.partial, row.near_duplicate, row.window_slack)
         groups.setdefault(key, []).append(row)
 
-    candidates: list[tuple[tuple[float, float, float, int, bool], OperatingPoint]] = []
-    for (n, stop_k, view_name, partial, near), group in groups.items():
+    candidates: list[tuple[tuple[float, float, float, int, bool, bool], OperatingPoint]] = []
+    for (n, stop_k, view_name, partial, near, slack), group in groups.items():
         upper = group[0].control_fpr_high
         scored = [row.recall for row in group if row.planted > 0]
         if upper > max_control_fpr_upper or not scored:
             continue
         macro = sum(scored) / len(scored)
-        point = OperatingPoint(n, stop_k, view_name, partial, near, macro, upper)
-        candidates.append(((round(macro, 12), partial, near, n, stop_k is None), point))
+        point = OperatingPoint(n, stop_k, view_name, partial, near, macro, upper, slack)
+        rank = (round(macro, 12), partial, near, n, stop_k is None, slack is None)
+        candidates.append((rank, point))
     if not candidates:
         raise ValueError(
             "no setting keeps the control false-positive upper bound at or below "
@@ -294,7 +313,7 @@ def evaluate_at(
     index = ExactIndex.build(
         items, view=View(point.view), n=point.n, stop_ngram_k=point.stop_ngram_k
     )
-    scores = score_corpus(index, corpus)
+    scores = score_corpus(index, corpus, point.window_slack)
     thresholds = Thresholds(point.partial, point.near_duplicate)
     return summarize(corpus, scores, thresholds, index.indexed_item_ids)
 

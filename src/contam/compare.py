@@ -43,6 +43,7 @@ def compare_methods(
     *,
     exact_ns: Sequence[int] = (2, 3, 5),
     fuzzy_ks: Sequence[int] = (3,),
+    windowed: Sequence[tuple[int, float]] = (),
     threshold: float = 0.3,
     view: View = View.QUESTION,
     num_perm: int = 64,
@@ -79,6 +80,12 @@ def compare_methods(
         index = ExactIndex.build(items, view=view, n=n)
         scores = score_corpus(index, corpus)
         add(f"exact n={n}", scores, index.indexed_item_ids, time.perf_counter() - start)
+
+    for n, slack in windowed:
+        start = time.perf_counter()
+        index = ExactIndex.build(items, view=view, n=n)
+        scores = score_corpus(index, corpus, slack)
+        add(f"win n={n}", scores, index.indexed_item_ids, time.perf_counter() - start)
 
     for k in fuzzy_ks:
         start = time.perf_counter()

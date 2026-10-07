@@ -4,19 +4,26 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from contam import __version__
 from contam.compare import compare_methods, write_compare_csv
 from contam.corrupt import DEFAULT_SPECS
 from contam.data.benchmarks import BENCHMARKS, load_benchmark, load_items_jsonl
-from contam.data.corpus import stream_documents
+from contam.data.corpus import limit_documents, stream_documents
+from contam.data.jsonl import read_jsonl
 from contam.dupes import find_near_duplicates
+from contam.evaluate import load_operating_point
 from contam.experiment import ExperimentConfig, run_experiment
 from contam.inject import Document, build_planted_corpus
 from contam.items import BenchmarkItem, View
+from contam.report import build_report, format_report
+from contam.scan import RawDocument, ScanConfig, ScanError, run_scan
 from contam.split import split_documents, split_items
 from contam.synthetic import synthetic_background, synthetic_items
 
@@ -60,6 +67,14 @@ def build_parser() -> argparse.ArgumentParser:
     design.add_argument("--seed", type=int, default=0)
     design.add_argument("--out", type=Path, default=Path("results/phase4"))
     design.add_argument("--no-plots", action="store_true")
+    design.add_argument(
+        "--window-slack",
+        type=float,
+        action="append",
+        dest="window_slacks",
+        default=None,
+        help="also evaluate window-localized containment with this slack (repeatable)",
+    )
 
     compare = commands.add_parser(
         "compare",
@@ -78,6 +93,8 @@ def build_parser() -> argparse.ArgumentParser:
     study.add_argument("--threshold", type=float, default=0.3)
     study.add_argument("--num-perm", type=int, default=64)
     study.add_argument("--bands", type=int, default=32)
+    study.add_argument("--windowed-n", type=int, action="append", dest="windowed_ns", default=None)
+    study.add_argument("--window-slack", type=float, default=1.5)
     study.add_argument("--seed", type=int, default=0)
     study.add_argument("--out", type=Path, default=Path("results/phase5_compare"))
 
@@ -94,6 +111,43 @@ def build_parser() -> argparse.ArgumentParser:
     dupes.add_argument("--num-perm", type=int, default=128)
     dupes.add_argument("--show", type=int, default=10, help="print the top N pairs")
     dupes.add_argument("--out", type=Path, default=None, help="write all pairs to this CSV")
+    scan = commands.add_parser(
+        "scan",
+        help="scan a corpus stream for benchmark items (checkpointed, multi-process)",
+        description=(
+            "Index the benchmark items and scan a corpus slice. Safe to interrupt: rerun with "
+            "--resume. Settings come from an operating_point.json written by 'contam evaluate' "
+            "unless overridden by flags."
+        ),
+    )
+    _add_source_args(scan)
+    tune = scan.add_argument_group("detector settings")
+    tune.add_argument("--operating-point", type=Path, default=None)
+    tune.add_argument("--n", type=int, default=None)
+    tune.add_argument("--view", choices=[v.value for v in View], default=None)
+    tune.add_argument("--partial", type=float, default=None)
+    tune.add_argument("--near", type=float, default=None)
+    tune.add_argument("--window-slack", type=float, default=None)
+    tune.add_argument("--no-window", action="store_true", help="whole-document containment")
+    tune.add_argument("--stop-k", type=int, default=None)
+    corpus = scan.add_argument_group("corpus slice")
+    corpus.add_argument("--corpus-config", default="sample-10BT", help="FineWeb config name")
+    corpus.add_argument("--corpus-jsonl", type=Path, default=None, help="scan a local JSONL file")
+    corpus.add_argument("--max-tokens", type=int, default=None, help="stop after this many tokens")
+    corpus.add_argument("--max-docs", type=int, default=None)
+    corpus.add_argument("--demo-docs", type=int, default=200, help="documents for --demo")
+    run = scan.add_argument_group("run")
+    run.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
+    run.add_argument("--batch-docs", type=int, default=500)
+    run.add_argument("--snippet-chars", type=int, default=200)
+    run.add_argument("--seed", type=int, default=0)
+    run.add_argument("--out", type=Path, default=Path("results/scan"))
+    run.add_argument("--resume", action="store_true")
+    run.add_argument("--overwrite", action="store_true")
+
+    report = commands.add_parser("report", help="summarize a scan folder as a table")
+    report.add_argument("--scan", type=Path, required=True, help="folder written by 'contam scan'")
+    report.add_argument("--top", type=int, default=10, help="show the strongest N hits")
     return parser
 
 
@@ -129,6 +183,7 @@ def _run_evaluate(args: argparse.Namespace) -> int:
         n_controls=args.controls,
         max_control_fpr_upper=args.max_control_fpr,
         seed=args.seed,
+        window_slacks=(None, *(args.window_slacks or ())),
     )
     try:
         result = run_experiment(
@@ -184,6 +239,7 @@ def _run_compare(args: argparse.Namespace) -> int:
             corpus,
             exact_ns=tuple(args.exact_ns) if args.exact_ns else (2, 3, 5),
             fuzzy_ks=tuple(args.fuzzy_ks) if args.fuzzy_ks else (3,),
+            windowed=tuple((n, args.window_slack) for n in (args.windowed_ns or ())),
             threshold=args.threshold,
             num_perm=args.num_perm,
             bands=args.bands,
@@ -199,6 +255,8 @@ def _run_compare(args: argparse.Namespace) -> int:
     specs = list(dict.fromkeys(row.spec for row in rows))
     recall = {(row.method, row.spec): row.recall for row in rows}
     print(f"threshold {args.threshold} (fixed, not tuned here); recall on the held-out test split")
+    if args.windowed_ns:
+        print(f"win = window-localized containment, slack {args.window_slack}")
     print(f"{'condition':24}" + "".join(f"{method:>13}" for method in methods))
     for spec in specs:
         print(f"{spec:24}" + "".join(f"{recall[(m, spec)]:>13.2f}" for m in methods))
@@ -246,6 +304,114 @@ def _run_dupes(args: argparse.Namespace) -> int:
     return 0
 
 
+def _scan_settings(args: argparse.Namespace) -> ScanConfig:
+    point = load_operating_point(args.operating_point) if args.operating_point else None
+    defaults = ScanConfig()
+    n = args.n if args.n is not None else (point.n if point else defaults.n)
+    view = args.view or (point.view if point else defaults.view)
+    partial = args.partial if args.partial is not None else (point.partial if point else 0.5)
+    near = args.near if args.near is not None else (point.near_duplicate if point else 0.9)
+    stop_k = args.stop_k if args.stop_k is not None else (point.stop_ngram_k if point else None)
+    slack = args.window_slack if args.window_slack is not None else defaults.window_slack
+    if args.window_slack is None and point is not None:
+        slack = point.window_slack
+    return ScanConfig(
+        n=n,
+        view=View(view),
+        partial=partial,
+        near_duplicate=near,
+        window_slack=None if args.no_window else slack,
+        stop_ngram_k=stop_k,
+        snippet_chars=args.snippet_chars,
+        batch_docs=args.batch_docs,
+        workers=args.workers,
+    )
+
+
+def _scan_source(
+    args: argparse.Namespace, items: list[BenchmarkItem]
+) -> tuple[Callable[[], Iterable[RawDocument]], str]:
+    if args.corpus_jsonl is not None:
+        path = args.corpus_jsonl
+
+        def from_file() -> Iterable[RawDocument]:
+            return limit_documents(
+                read_jsonl(path), max_docs=args.max_docs, max_tokens=args.max_tokens
+            )
+
+        size = path.stat().st_size
+        return from_file, f"jsonl:{path.name}:{size}:{args.max_docs}:{args.max_tokens}"
+    if args.demo:
+        corpus = build_planted_corpus(
+            items,
+            synthetic_background(args.demo_docs, seed=args.seed),
+            DEFAULT_SPECS,
+            items_per_spec=5,
+            n_controls=args.demo_docs,
+            seed=args.seed,
+        )
+        return (lambda: corpus.documents), f"demo:{args.seed}:{args.demo_docs}:{len(items)}"
+
+    def from_fineweb() -> Iterable[RawDocument]:
+        return stream_documents(
+            name=args.corpus_config, max_docs=args.max_docs, max_tokens=args.max_tokens
+        )
+
+    return from_fineweb, f"fineweb:{args.corpus_config}:{args.max_docs}:{args.max_tokens}"
+
+
+def _run_scan(args: argparse.Namespace) -> int:
+    items = _collect_items(args)
+    if not items:
+        print("error: provide --benchmark, --items-jsonl or --demo", file=sys.stderr)
+        return 2
+    factory, source = _scan_source(args, items)
+    config = replace(_scan_settings(args), source=source)
+    print(
+        f"scanning {len(items)} items: n={config.n}, view={config.view}, "
+        f"partial={config.partial}, near={config.near_duplicate}, "
+        f"window_slack={config.window_slack}, workers={config.workers}"
+    )
+
+    def show(state: dict[str, Any]) -> None:
+        docs = int(state["docs_done"])
+        if docs % (config.batch_docs * 10) < config.batch_docs:
+            print(
+                f"  {docs:,} docs, {int(state['tokens_done']):,} tokens, "
+                f"{state['hits_written']} hits"
+            )
+
+    try:
+        result = run_scan(
+            items,
+            factory,
+            config,
+            args.out,
+            resume=args.resume,
+            overwrite=args.overwrite,
+            progress=show,
+        )
+    except (ScanError, ValueError) as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    rate = result.tokens / result.seconds if result.seconds else 0.0
+    print(
+        f"done: {result.docs:,} docs, {result.tokens:,} tokens in {result.seconds:.0f}s "
+        f"({rate:,.0f} tokens/s)"
+    )
+    print(format_report(build_report(args.out)))
+    return 0
+
+
+def _run_report(args: argparse.Namespace) -> int:
+    try:
+        print(format_report(build_report(args.scan, args.top)))
+    except FileNotFoundError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -255,6 +421,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_compare(args)
     if args.command == "dupes":
         return _run_dupes(args)
+    if args.command == "scan":
+        return _run_scan(args)
+    if args.command == "report":
+        return _run_report(args)
     parser.print_help()
     return 0
 

@@ -29,6 +29,7 @@ def plot_edit_rate_curves(
     view: str,
     partial: float,
     near_duplicate: float,
+    window_slack: float | None = None,
 ) -> None:
     """Recall versus the fraction of words edited, one line per n, with Wilson intervals."""
     plt = _pyplot()
@@ -39,6 +40,7 @@ def plot_edit_rate_curves(
         and r.partial == partial
         and r.near_duplicate == near_duplicate
         and r.stop_ngram_k is None
+        and r.window_slack == window_slack
         and r.intensity is not None
     ]
     kinds = [

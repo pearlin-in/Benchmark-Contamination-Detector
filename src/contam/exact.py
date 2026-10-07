@@ -74,6 +74,8 @@ class Hit:
     ngram_size: int
     exact: bool
     short: bool
+    window_start: int = -1  # position of the first matched n-gram in the best window
+    snippet: str = ""  # normalized text around the match, only if requested
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +105,7 @@ class _Entry:
     ngram_size: int
     total: int  # distinct non-stop n-grams: the containment denominator
     short: bool  # fewer tokens than the configured n
+    windows: int  # number of n-gram positions the item spans
 
 
 def gpt3_style_ngram_size(token_lengths: Sequence[int], cap: int = 13) -> int:
@@ -120,6 +123,36 @@ def gpt3_style_ngram_size(token_lengths: Sequence[int], cap: int = 13) -> int:
 def item_token_lengths(items: Iterable[BenchmarkItem], view: View) -> list[int]:
     """Token count of each item under ``view`` (used to choose n and report short items)."""
     return [len(tokenize(normalize(item.text(view)))) for item in items]
+
+
+def best_window(positions: Sequence[tuple[int, int]], span: int) -> tuple[int, int]:
+    """Most distinct n-grams inside any window of ``span`` consecutive positions.
+
+    ``positions`` are ``(position, hash)`` pairs in increasing position order. Returns
+    ``(distinct count, position of the first matched n-gram in the best window)``, or
+    ``(0, -1)`` when there are no positions. Runs in linear time (two pointers).
+    """
+    if not positions:
+        return 0, -1
+    counts: dict[int, int] = {}
+    distinct = 0
+    best = 0
+    best_start = positions[0][0]
+    left = 0
+    for position, value in positions:
+        counts[value] = counts.get(value, 0) + 1
+        if counts[value] == 1:
+            distinct += 1
+        while position - positions[left][0] >= span:
+            leaving = positions[left][1]
+            counts[leaving] -= 1
+            if counts[leaving] == 0:
+                distinct -= 1
+            left += 1
+        if distinct > best:
+            best = distinct
+            best_start = positions[left][0]
+    return best, best_start
 
 
 class ExactIndex:
@@ -214,6 +247,7 @@ class ExactIndex:
                     ngram_size=size,
                     total=len(kept),
                     short=len(token_lists[key]) < n,
+                    windows=len(token_lists[key]) - size + 1,
                 )
             )
             for value in kept:
@@ -255,17 +289,34 @@ class ExactIndex:
 
     # ------------------------------------------------------------------ scanning
     def scan_document(
-        self, doc_id: str, text: str, thresholds: Thresholds | None = None
+        self,
+        doc_id: str,
+        text: str,
+        thresholds: Thresholds | None = None,
+        *,
+        window_slack: float | None = None,
+        snippet_chars: int = 0,
     ) -> list[Hit]:
-        """All benchmark items overlapping ``text`` at or above ``thresholds``."""
+        """All benchmark items overlapping ``text`` at or above ``thresholds``.
+
+        With ``window_slack`` set, containment is measured inside the best window of
+        ``ceil(window_slack * item length)`` n-gram positions instead of the whole document
+        (D-047). Overlap scattered across a long page then stops counting. With
+        ``snippet_chars > 0`` each hit carries a short normalized excerpt (D-051).
+        """
         tokens = tokenize(normalize(text))
-        return self._scan_tokens(doc_id, tokens, thresholds or Thresholds())
+        return self._scan_tokens(
+            doc_id, tokens, thresholds or Thresholds(), window_slack, snippet_chars
+        )
 
     def scan_corpus(
         self,
         docs: Iterable[tuple[str, object]],
         thresholds: Thresholds | None = None,
         stats: ScanStats | None = None,
+        *,
+        window_slack: float | None = None,
+        snippet_chars: int = 0,
     ) -> Iterator[Hit]:
         """Stream ``(doc_id, text)`` pairs and yield hits; malformed documents are counted."""
         active = thresholds or Thresholds()
@@ -275,30 +326,43 @@ class ExactIndex:
                     stats.malformed += 1
                 continue
             tokens = tokenize(normalize(text))
-            hits = self._scan_tokens(doc_id, tokens, active)
+            hits = self._scan_tokens(doc_id, tokens, active, window_slack, snippet_chars)
             if stats is not None:
                 stats.documents += 1
                 stats.tokens += len(tokens)
                 stats.hits += len(hits)
             yield from hits
 
-    def _scan_tokens(self, doc_id: str, tokens: list[str], thresholds: Thresholds) -> list[Hit]:
-        matched: dict[int, set[int]] = {}
+    def _scan_tokens(
+        self,
+        doc_id: str,
+        tokens: list[str],
+        thresholds: Thresholds,
+        window_slack: float | None,
+        snippet_chars: int,
+    ) -> list[Hit]:
+        found: dict[int, list[tuple[int, int]]] = {}
         for size, table in self._tables.items():
-            for value in ngram_hashes(tokens, size):
+            for position, value in enumerate(ngram_hashes(tokens, size)):
                 entry_indices = table.get(value)
                 if entry_indices is None:
                     continue
                 for entry_index in entry_indices:
-                    matched.setdefault(entry_index, set()).add(value)
-        if not matched:
+                    found.setdefault(entry_index, []).append((position, value))
+        if not found:
             return []
 
         haystack: str | None = None
         hits: list[Hit] = []
-        for entry_index, values in matched.items():
+        for entry_index, positions in found.items():
             entry = self._entries[entry_index]
-            containment = len(values) / entry.total
+            if window_slack is None:
+                matched = len({value for _, value in positions})
+                start = positions[0][0]
+            else:
+                span = max(1, math.ceil(window_slack * entry.windows))
+                matched, start = best_window(positions, span)
+            containment = matched / entry.total
             exact = False
             if containment >= thresholds.near_duplicate:
                 if haystack is None:
@@ -308,17 +372,23 @@ class ExactIndex:
             level = thresholds.classify(containment, exact=exact)
             if level is Level.NONE:
                 continue
+            snippet = ""
+            if snippet_chars > 0:
+                length = entry.windows + entry.ngram_size - 1
+                snippet = " ".join(tokens[start : start + length + 3])[:snippet_chars]
             hits.extend(
                 Hit(
                     item_id=item_id,
                     doc_id=doc_id,
                     level=level,
                     containment=containment,
-                    matched_ngrams=len(values),
+                    matched_ngrams=matched,
                     total_ngrams=entry.total,
                     ngram_size=entry.ngram_size,
                     exact=exact,
                     short=entry.short,
+                    window_start=start,
+                    snippet=snippet,
                 )
                 for item_id in entry.item_ids
             )

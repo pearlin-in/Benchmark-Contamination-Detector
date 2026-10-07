@@ -49,6 +49,7 @@ class ExperimentConfig:
     seed: int = 0
     specs: tuple[CorruptionSpec, ...] = DEFAULT_SPECS
     test_sweep: bool = True
+    window_slacks: tuple[float | None, ...] = (None,)
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +110,7 @@ def run_experiment(
         stop_ks=config.stop_ks,
         partials=config.partials,
         near_duplicates=config.near_duplicates,
+        window_slacks=config.window_slacks,
     )
     write_rows_csv(out / "dev_sweep.csv", dev_rows)
     write_manifest(out / "dev_manifest.jsonl", dev_corpus)
@@ -136,7 +138,11 @@ def run_experiment(
         raise RuntimeError(f"test ground truth is inconsistent: {problems[:3]}")
     summary = evaluate_at(items, test_corpus, point)
     test_rows = rows_from_summary(
-        summary, n=point.n, stop_ngram_k=point.stop_ngram_k, view=View(point.view)
+        summary,
+        n=point.n,
+        stop_ngram_k=point.stop_ngram_k,
+        view=View(point.view),
+        window_slack=point.window_slack,
     )
     write_rows_csv(out / "test_conditions.csv", test_rows)
     _write_json(out / "test_summary.json", summary_to_dict(summary))
@@ -151,6 +157,7 @@ def run_experiment(
                 stop_ks=config.stop_ks,
                 partials=config.partials,
                 near_duplicates=config.near_duplicates,
+                window_slacks=config.window_slacks,
             ),
         )
 
@@ -168,6 +175,7 @@ def run_experiment(
             view=point.view,
             partial=point.partial,
             near_duplicate=point.near_duplicate,
+            window_slack=point.window_slack,
         )
         plot_condition_recall(
             test_rows,
