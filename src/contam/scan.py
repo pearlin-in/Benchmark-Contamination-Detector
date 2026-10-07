@@ -26,7 +26,7 @@ from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from contam.data.jsonl import read_jsonl
 from contam.exact import ExactIndex, Hit, ScanStats, Thresholds
@@ -102,7 +102,7 @@ def _scan_batch(batch: list[RawDocument]) -> _BatchResult:
             snippet_chars=config.snippet_chars,
         )
     )
-    return _BatchResult(hits, len(batch), stats.tokens, stats.malformed)
+    return cast(_BatchResult, _BatchResult(hits, len(batch), stats.tokens, stats.malformed))
 
 
 # --------------------------------------------------------------------------- file helpers
@@ -266,7 +266,7 @@ def run_scan(
 
     started = time.perf_counter()
     base_elapsed = float(state["elapsed"])
-    handle = hits_path.open("ab")
+    handle = hits_path.open("ab")  # type: ignore[assignment]
     pool = None
     if config.workers > 1:
         context = multiprocessing.get_context("spawn")
@@ -278,7 +278,7 @@ def run_scan(
     in_flight = max(1, config.workers * 2)
 
     def resolve(task: Any) -> _BatchResult:
-        return task if pool is None else task.get()
+        return task if pool is None else task.get()  # type: ignore[no-any-return]
 
     def commit(batch_result: _BatchResult) -> None:
         payload = "".join(
@@ -313,7 +313,7 @@ def run_scan(
         try:
             while pending:
                 commit(resolve(pending.popleft()))
-        except Exception:  # noqa: BLE001, S110 - the original error is the one worth reporting
+        except Exception:  # noqa: S110 - the original error is the one worth reporting
             pass
         raise
     finally:
