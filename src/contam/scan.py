@@ -129,11 +129,16 @@ def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     temporary.write_text(text, encoding="utf-8", newline="\n")
     for attempt in range(8):
         try:
+            if path.exists():
+                try:
+                    path.unlink()  # Helps avoid Windows [WinError 5] on os.replace
+                except PermissionError:
+                    pass
             os.replace(temporary, path)
         except PermissionError:
             if attempt == 7:
                 raise
-            time.sleep(0.25)
+            time.sleep(0.5)
         else:
             return
 

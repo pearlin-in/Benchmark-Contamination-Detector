@@ -30,3 +30,6 @@ results/checkpoints/
 .vscode/
 .DS_Store
 Thumbs.db
+
+results/scan*/
+results/phase6*/
