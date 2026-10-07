@@ -10,6 +10,7 @@ from contam.exact import (
     Level,
     ScanStats,
     Thresholds,
+    best_window,
     gpt3_style_ngram_size,
 )
 from contam.items import BenchmarkItem, View
@@ -260,3 +261,40 @@ def test_gpt3_style_index_flags_any_single_shared_ngram() -> None:
     assert hits[0].level is Level.PARTIAL
     assert hits[0].matched_ngrams == 1
     assert index.scan_document("d1", doc) == []  # the default thresholds do not flag it
+
+
+# ----------------------------------------------------------------------------- windowed mode
+def test_best_window_counts_distinct_ngrams_inside_the_span() -> None:
+    positions = [(0, 1), (1, 2), (50, 3), (51, 4)]
+    assert best_window(positions, 5) == (2, 0)
+    assert best_window(positions, 100) == (4, 0)
+    assert best_window([], 5) == (0, -1)
+
+
+def test_repeated_ngrams_in_a_window_count_once() -> None:
+    assert best_window([(0, 7), (1, 7), (2, 7)], 10)[0] == 1
+
+
+def test_windowing_ignores_overlap_scattered_across_a_long_document() -> None:
+    item = _item("w:1", "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima")
+    index = ExactIndex.build([item], n=3)  # 10 trigrams
+    filler = " ".join(f"zz{i}" for i in range(40))
+    pieces = ["alpha bravo charlie", "delta echo foxtrot", "golf hotel india", "juliet kilo lima"]
+    document = f" {filler} ".join(pieces)  # each fragment contributes one trigram
+    whole = index.scan_document("d", document, Thresholds(partial=0.3))
+    windowed = index.scan_document("d", document, Thresholds(partial=0.3), window_slack=1.5)
+    assert [hit.containment for hit in whole] == [0.4]
+    assert windowed == []
+
+
+def test_windowing_does_not_change_a_verbatim_hit_and_reports_where_it_is() -> None:
+    index = ExactIndex.build([MATH], n=5)
+    document = "intro words before " + MATH.question + " and some words after"
+    plain = index.scan_document("d", document)[0]
+    windowed = index.scan_document("d", document, window_slack=1.5, snippet_chars=60)[0]
+    assert windowed.level is Level.EXACT
+    assert windowed.containment == plain.containment == 1.0
+    assert windowed.window_start == 3
+    assert windowed.snippet.startswith("maya buys 7 notebooks")
+    assert len(windowed.snippet) <= 60
+    assert plain.snippet == ""

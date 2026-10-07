@@ -248,3 +248,18 @@ def test_summary_dict_is_json_serializable() -> None:
     import json
 
     assert json.dumps(summary_to_dict(_summary()))
+
+
+def test_sweep_can_compare_whole_document_and_windowed_containment() -> None:
+    rows = run_sweep(
+        ITEMS,
+        CORPUS,
+        ns=(5,),
+        views=(View.QUESTION_CHOICES,),
+        partials=(0.5,),
+        near_duplicates=(0.8,),
+        window_slacks=(None, 1.5),
+    )
+    assert {row.window_slack for row in rows} == {None, 1.5}
+    verbatim = {row.window_slack: row.recall for row in rows if row.spec == "verbatim"}
+    assert verbatim == {None: 1.0, 1.5: 1.0}

@@ -102,3 +102,27 @@ def test_dupes_requires_a_benchmark() -> None:
     with pytest.raises(SystemExit) as excinfo:
         main(["dupes"])
     assert excinfo.value.code == 2
+
+
+def test_scan_demo_writes_hits_and_prints_a_report(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "scan"
+    code = main(
+        [
+            "scan", "--demo", "--demo-items", "40", "--demo-docs", "40", "--workers", "1",
+            "--batch-docs", "20", "--out", str(out),
+        ]
+    )  # fmt: skip
+    assert code == 0
+    assert "lower bounds" in capsys.readouterr().out
+    assert (out / "hits.jsonl").is_file()
+    assert main(["report", "--scan", str(out), "--top", "2"]) == 0
+    assert main(["scan", "--demo", "--demo-items", "40", "--out", str(out)]) == 2
+
+
+def test_report_on_a_missing_folder_is_a_clean_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["report", "--scan", str(tmp_path / "nothing")]) == 2
+    assert "error:" in capsys.readouterr().err
