@@ -2,7 +2,7 @@
 
 This file records every non-trivial choice in the project: what was chosen, what else was considered, and **what evidence justified it**. It is the main place a reader sees that you understand *why*, not just *what*.
 
-Entries D-001 to D-018 come from `SCOPE.md` section 6. Entries D-028 to D-033 were added during roadmap phases 2-3, D-034 to D-040 during phase 4, and D-041 to D-045 are the planned design for phase 5. Each entry lists the **experiment that will confirm or change it**, and has a **Result** field that stays empty until you have actually run that experiment. **Never write a Result before running the experiment.** A result written in advance is the one thing this file must never contain.
+Entries D-001 to D-018 come from `SCOPE.md` section 6. Entries D-028 to D-033 were added during roadmap phases 2-3, D-034 to D-040 during phase 4, and D-041 to D-045 during phase 5, and D-047 to D-052 are the design for phase 6. Each entry lists the **experiment that will confirm or change it**, and has a **Result** field that stays empty until you have actually run that experiment. **Never write a Result before running the experiment.** A result written in advance is the one thing this file must never contain.
 
 IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the table near the end), which is why the numbering jumps from D-018 to D-028.
 
@@ -73,11 +73,17 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 | D-038 | Recall definition and unindexed items | Locked |
 | D-039 | Operating-point selection rule | Provisional |
 | D-040 | Scan once at a floor threshold, then re-threshold | Locked |
-| D-041 | Phase 5 purpose and hypothesis | Provisional |
+| D-041 | Phase 5 purpose and hypothesis | Confirmed |
 | D-042 | MinHash implementation and validation | Provisional |
 | D-043 | LSH banding and S-curve check | Provisional |
-| D-044 | Windowed fuzzy matching with exact verification | Provisional |
+| D-044 | Windowed fuzzy matching with exact verification | Changed |
 | D-045 | Within-benchmark near-duplicate detection | Provisional |
+| D-047 | Window-localized containment | Provisional |
+| D-048 | Tighter false-positive bound and more controls | Provisional |
+| D-049 | Scan architecture: bounded batches in a spawn process pool | Provisional |
+| D-050 | Exactly-once checkpointing and resume | Provisional |
+| D-051 | Hit records and snippets | Locked |
+| D-052 | Headline metric: item-level rates with intervals | Locked |
 
 ---
 
@@ -144,7 +150,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Rationale:** 8-grams appear in GPT-2-era analysis and 13-grams in GPT-3's; sweeping shows the tradeoff on your own data rather than assuming it.
 - **Implemented in:** `ExactIndex.build(n=...)`, `gpt3_style_ngram_size` and `ExactIndex.gpt3_style` in `src/contam/exact.py`.
 - **Experiment:** Grid over n x overlap threshold on the planted dev set: recall by corruption type, false-positive rate on controls. Then count real hits per n on tier-S corpus data.
-- **Result:** *(partial)* With the grid n in {5, 8, 13}, partial in {0.3, 0.5, 0.7}, near in {0.8, 0.9}, both the real-data run and the synthetic demo selected n=5 with thresholds 0.3/0.9 on dev data: the smallest n and the loosest partial threshold in the grid. The optimum may lie outside the grid, so the grid is being widened (n=3 and 4). Real-hit counts per n are not yet measured.
+- **Result:** Widened grid (n in {2, 3, 4, 5, 8}), real data, GSM8K + ARC-Challenge, 500 controls: dev selected n=2, view question_choices, partial 0.3, near_duplicate 0.9 (the narrower grid had selected n=5, the edge of that grid). Test macro recall 0.997; control flagged 10/500 (upper bound 0.036); weakest conditions word_delete@0.3 0.98 and word_substitute@0.3 0.96. Control flags depend strongly on n and view: in the question-only view at partial 0.3 (compare run, 300 controls), exact n=2 flagged 138, n=3 flagged 3 and n=5 flagged 0. Whole-document containment is not scale-invariant at low n, which motivates D-047. Real-hit counts per n are not yet measured.
 - **Tradeoff:** Reporting three n values complicates the headline; pick one and show the others in an appendix.
 - **Revisit if:** short benchmark items (ARC) make the chosen n unusable.
 
@@ -354,7 +360,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Options:** keep as is and report the limitation; also match with labels removed; rely on the question-only view for exact matching.
 - **Decision:** Keep as is for now; report both views. Revisit after the planted-data experiments.
 - **Experiment:** Plant MCQ items with and without option labels; compare recall in both views.
-- **Result:** *(partial)* Question+choices view, n=5, thresholds 0.3/0.9, 100 plants per condition on the test set: `choice_shuffle` 0.98 [0.93, 0.99], `labelled_dot` 0.96 [0.90, 0.98], `labelled_paren` 0.94 [0.88, 0.97]. Option labels cost about 2-4 points of recall at this operating point. The question-only view and the exact-match counts for these conditions have not been compared yet.
+- **Result:** Question+choices view, n=5 (narrow-grid run, 100 plants per condition): choice_shuffle 0.98, labelled_dot 0.96, labelled_paren 0.94. Question-only view (compare run, 50 plants per condition, threshold 0.3): all three were 1.00 at n=2, 3 and 5, so the question-only view is insensitive to option labels. In the widened-grid run (question+choices view, n=2) all three were also 1.00. Exact-match counts for these conditions were not inspected.
 
 ### D-034: Dev/test split key is the normalized question text
 - **Status:** Locked | **Phase:** 4
@@ -381,7 +387,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Status:** Locked | **Phase:** 4
 - **Context:** On real background text, a "false positive" in a control document may be genuine contamination.
 - **Decision:** Report control flag rate with a Wilson interval and call it an upper bound. Do NOT screen controls with the detector under test (that would make precision look perfect by construction). Real precision comes from hand-labelling (D-012).
-- **Result:** Real-data run: 0 of 500 control documents flagged (Wilson upper bound 0.008). No setting ever flagged a control, so the bound never constrained the selection in D-039.
+- **Result:** Narrow-grid run (n=5, question+choices view): 0/500 flagged (upper bound 0.008). Widened-grid run (frozen n=2): 10/500 flagged (upper bound 0.036). Compare run (question-only view, threshold 0.3, 300 controls): exact n=2 138, n=3 3, n=5 0, fuzzy k=2 10, fuzzy k=3 0. Flags depend strongly on n and view. Whether any flagged control is genuine contamination has not been checked.
 
 ### D-038: Recall definition and unindexed items
 - **Status:** Locked | **Phase:** 4
@@ -393,7 +399,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Status:** Provisional | **Phase:** 4
 - **Decision:** On dev data only, maximize macro recall (every corruption condition weighted equally) among settings whose Wilson UPPER bound on the control flag rate is at most 0.05. Ties prefer stricter thresholds, then larger n, then no stop-n-gram filter. The point is written to `operating_point.json` before the test corpus is built.
 - **Experiment:** Compare the chosen point against the best-recall point without the false-positive bound.
-- **Result:** *(partial)* On dev data the rule selected n=5, view question_choices, partial 0.3, near_duplicate 0.9 in both the real-data run and the synthetic demo. Because the false-positive bound never bound (D-037), the rule reduced to maximizing macro recall, which favours the loosest settings, and the choice sits on the grid boundary. Treat it as provisional until precision is measured on hand-labelled real hits (D-012). The comparison without the bound has not been run.
+- **Result:** Narrow grid: n=5, partial 0.3, near 0.9 (edge of the grid). Widened grid: n=2, view question_choices, partial 0.3, near 0.9, test macro recall 0.997, 10/500 controls flagged (upper bound 0.036). The 0.05 bound on the Wilson upper limit let n=2 through at a 2% flag rate because the bound is loose with 500 controls; see D-048. The comparison without the bound has not been run.
 - **Revisit if:** macro recall hides a condition you care about (try a minimum-recall rule per condition).
 
 ### D-040: Scan once at a floor threshold, then re-threshold
@@ -405,12 +411,12 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 
 
 ### D-041: Phase 5 purpose and hypothesis
-- **Status:** Provisional | **Phase:** 5
+- **Status:** Confirmed | **Phase:** 5
 - **Context:** Phase 4 showed recall collapsing at 20-30% word edits. Deleting a fraction p of words destroys every n-gram window that touches a deleted word, so containment is expected to be about (1 - p)^n. For n=5 that is 0.33 at p=0.2 and 0.17 at p=0.3, against observed recall of 0.51 and 0.10 at a 0.3 threshold. MinHash over the *same* n-grams cannot change this arithmetic.
 - **Hypothesis:** Heavy-edit recall comes from smaller shingles (n=2 or 3), which predict containment of 0.64/0.49 (n=2) and 0.51/0.34 (n=3) at p=0.2/0.3, not from MinHash itself. MinHash+LSH adds value for scale and for item-to-item near-duplicate search.
 - **Decision:** Treat Phase 5 as a comparison, not an assumed improvement: evaluate exact containment at n=2 and n=3, and the fuzzy MinHash method, on the same planted harness, by condition, with precision on controls and runtime.
 - **Experiment:** Compare predicted (1 - p)^n against observed containment per n; compare recall by condition for exact n=2, 3, 5 and for the fuzzy method.
-- **Result:** *(empty)*
+- **Result:** Confirmed on GSM8K + ARC-Challenge (compare run, question-only view, threshold 0.3, 50 plants per condition, so about +/-0.1). Recall at 20% / 30% word deletion: n=5 0.52 / 0.16, n=3 0.88 / 0.72, n=2 1.00 / 0.94. Predicted containment (1 - p)^n: n=5 0.33 / 0.17, n=3 0.51 / 0.34, n=2 0.64 / 0.49; recall followed these predictions. Smaller n costs precision: controls flagged 0 / 3 / 138 of 300 for n = 5 / 3 / 2.
 - **Tradeoff:** If exact n=3 matches the fuzzy method at lower cost, that is the finding, and the fuzzy method is reported as a scaling option.
 - **Revisit if:** precision on controls collapses at n=2 or 3.
 
@@ -430,11 +436,11 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Revisit if:** the empirical curve disagrees with theory (a bug).
 
 ### D-044: Windowed fuzzy matching with exact verification
-- **Status:** Provisional | **Phase:** 5
+- **Status:** Changed | **Phase:** 5
 - **Decision:** Slide windows sized to the item's token length across each document. A window signature is the elementwise minimum of the per-shingle signatures it contains (computed with a rolling minimum, so each shingle is hashed once). LSH proposes candidate (window, item) pairs; each candidate is verified by exact containment of the item's word k-shingles (k = 2 or 3, decided in D-046) and kept only above a verification threshold tuned on dev data (D-011).
 - **Rationale:** Whole-document signatures are too coarse for short items; verification keeps precision high.
 - **Experiment:** Run on the planted harness and compare recall by condition against exact n=2, 3 and 5; measure documents per second and memory.
-- **Result:** *(empty)*
+- **Result:** Run on the compare corpus (about 1,300 documents). Fuzzy k=2 matched exact n=2 on recall (0.93 vs 0.94 at 30% deletion, 0.85 vs 0.94 at 30% substitution) and flagged 10/300 controls versus 138/300. Fuzzy k=3 was slightly below exact n=3 (0.67 vs 0.72 at 30% deletion). Time: exact n=2 23 s, n=3 3.7 s, n=5 3.2 s, fuzzy k=2 104 s, fuzzy k=3 203 s. Conclusion: the useful part is window-localized verification, not MinHash, so M2 is not carried into the main scan; windowing is reimplemented on the exact detector in D-047.
 - **Tradeoff:** Much slower than the exact detector; report the cost honestly.
 - **Revisit if:** exact n=3 gives the same recall at lower cost (see D-041).
 
@@ -443,7 +449,58 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Decision:** Use MinHash+LSH on benchmark items to find near-duplicate items within a benchmark and between its splits (for example GSM8K train versus test), using word 3-shingles at Jaccard thresholds 0.5, 0.7 and 0.9. Hand-check a sample of 30 pairs.
 - **Rationale:** This is the natural use of LSH (item-to-item similarity at scale) and gives real findings without any corpus. It also answers the D-029 experiment.
 - **Experiment:** Report the number of near-duplicate pairs per threshold for each benchmark and split pair.
+- **Result:** GSM8K, word 3-shingles, MinHash+LSH candidates verified with exact Jaccard. Within test (1,319 items): 1 pair at Jaccard >= 0.5, 0 at >= 0.7, 0 at >= 0.9. Test versus train: 3 pairs at >= 0.5, 0 at >= 0.7, 0 at >= 0.9. All pairs found are template variants with different numbers or names (for example the same word problem about a plane versus a train), so digits lower the Jaccard. ARC-Challenge and MMLU have not been run. With so few pairs the 30-pair hand check was not needed.
+
+
+### D-047: Window-localized containment
+- **Status:** Provisional | **Phase:** 6
+- **Context:** Whole-document containment is not scale-invariant at low n: at n=2, 46% of ordinary web pages crossed the 0.3 threshold (138 of 300 controls) because common word pairs accumulate over a long page. The windowed fuzzy method flagged only 10 of 300 at the same recall, because it measures overlap inside an item-sized window (D-044 result).
+- **Decision:** Keep the exact n-gram index as the fast scanner, but score each candidate item by the most distinct n-grams found inside any window of `ceil(window_slack * item length)` n-gram positions. The default slack is 1.5. Exact (contiguous) verification is unchanged.
+- **Rationale:** It gives the windowed method's precision at the exact detector's speed, and a verbatim copy is unaffected (containment 1.0).
+- **Implemented in:** `best_window` and `ExactIndex.scan_document(window_slack=...)` in `src/contam/exact.py`.
+- **Experiment:** Run `contam evaluate ... --n 2 --n 3 --n 4 --window-slack 1.5 --window-slack 2` and compare control flags and recall with and without windowing at the same n; also `contam compare --windowed-n 2 --windowed-n 3`.
 - **Result:** *(empty)*
+- **Tradeoff:** Overlap spread over a long passage (an item quoted in pieces) counts for less.
+- **Revisit if:** windowed recall falls well below whole-document recall on `html_split` or `truncate` conditions.
+
+### D-048: Tighter false-positive bound and more controls
+- **Status:** Provisional | **Phase:** 6
+- **Context:** With 500 controls and a bound of 0.05 on the Wilson upper limit, the selection rule accepted n=2 at 10 of 500 controls flagged (D-039 result).
+- **Decision:** For the next evaluation run use a bound of 0.02 with 1,000 controls (`--max-control-fpr 0.02 --controls 1000`), which allows up to about 11 flagged controls in 1,000. Keep reporting the 0.05 variant for comparison.
+- **Experiment:** Rerun the widened-grid evaluation under both bounds and compare the selected points.
+- **Result:** *(empty)*
+- **Revisit if:** flagged controls turn out to be genuine contamination, which would make the bound penalize correct detections.
+
+### D-049: Scan architecture: bounded batches in a spawn process pool
+- **Status:** Provisional | **Phase:** 6
+- **Decision:** The main process streams documents and cuts them into batches of 500. Up to twice the worker count of batches are in flight in a `spawn` process pool (the same behaviour on Windows, macOS and Linux), and results are committed strictly in batch order. Each worker builds the index once in its initializer.
+- **Rationale:** Memory stays flat on any corpus size, and output is byte-identical for one worker or many.
+- **Implemented in:** `run_scan` in `src/contam/scan.py`.
+- **Experiment:** Compare tokens per second for 1, 2 and 4+ workers on the same slice; confirm identical output files (a test does this).
+- **Result:** *(empty)*
+- **Tradeoff:** Each worker holds its own copy of the index.
+- **Revisit if:** the main process (streaming and pickling) becomes the bottleneck.
+
+### D-050: Exactly-once checkpointing and resume
+- **Status:** Provisional | **Phase:** 6
+- **Decision:** After every committed batch the hits file is flushed and `checkpoint.json` is written atomically, recording documents done and the exact byte size of the hits file. A resumed run truncates any half-written tail, skips the documents already processed by re-reading the stream, and refuses to resume if a fingerprint of the settings (items, thresholds, window, source) differs. Writes retry on `PermissionError` because OneDrive or antivirus can lock files.
+- **Implemented in:** `run_scan` in `src/contam/scan.py`; crash, truncation and fingerprint tests in `tests/unit/test_scan.py`.
+- **Experiment:** Interrupt a real scan (Ctrl+C), resume it, and diff the output against an uninterrupted run on a small slice.
+- **Result:** *(empty)*
+- **Tradeoff:** Resuming re-downloads the skipped part of the stream.
+- **Revisit if:** the skip cost becomes large on tier-M or tier-L slices (then store the stream position).
+
+### D-051: Hit records and snippets
+- **Status:** Locked | **Phase:** 6
+- **Decision:** Each hit stores item id, document id, level, containment, counts, and a normalized (lowercased, punctuation-free) excerpt of at most 200 characters around the best window. Raw hit files are not committed (D-017); add `results/scan*/` to `.gitignore`.
+- **Rationale:** The excerpt is enough for hand-labelling in Phase 7 and keeps corpus text to a minimum.
+- **Result:** n/a
+
+### D-052: Headline metric: item-level rates with intervals
+- **Status:** Locked | **Phase:** 6
+- **Decision:** Report, per benchmark, the number and percentage of items with at least one hit at each level (partial or more, near-duplicate or more, exact), counted once per item at its strongest level, with Wilson 95% intervals over indexed items. State plainly that these are lower bounds for a corpus slice and say nothing about any model.
+- **Implemented in:** `src/contam/report.py`.
+- **Result:** n/a
 
 ---
 
@@ -462,7 +519,7 @@ These don't exist yet because they depend on evidence. Create each entry when yo
 | D-025 | Multiprocessing design and deterministic merge | before the full scan |
 | D-026 | Hit-list output schema | before the full scan |
 | D-027 | Whether to run the FineWeb-Edu comparison (RQ5) | after the main scan |
-| D-046 | Final M2 parameters (shingle size, permutations, bands x rows, stride, verification threshold) | after the M2 experiments |
+| D-046 | Final M2 parameters | not needed: M2 is not used in the main scan (see D-044) |
 
 ---
 
@@ -471,4 +528,5 @@ These don't exist yet because they depend on evidence. Create each entry when yo
 | Date | What changed | Why | Entry |
 | --- | --- | --- | --- |
 | 2026-10-05 | Phase 5 scope refined: the fuzzy method is compared against exact n=2 and n=3, and within-benchmark duplicate detection is added | Phase 4 showed recall tracks (1 - p)^n, so MinHash over the same n-grams cannot help by itself | D-041 |
+| 2026-10-07 | Phase 6 scan uses window-localized exact containment instead of MinHash; selection bound to be tightened | Phase 5 showed windowing, not MinHash, removed the low-n false positives, and the 0.05 bound let n=2 through at a 2% flag rate | D-047, D-048 |
 
