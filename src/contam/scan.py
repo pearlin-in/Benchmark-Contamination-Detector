@@ -127,20 +127,15 @@ def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     temporary = path.with_name(path.name + ".tmp")
     text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     temporary.write_text(text, encoding="utf-8", newline="\n")
-    for attempt in range(8):
+    for attempt in range(60):
         try:
-            if path.exists():
-                try:
-                    path.unlink()  # Helps avoid Windows [WinError 5] on os.replace
-                except PermissionError:
-                    pass
             os.replace(temporary, path)
         except PermissionError:
-            if attempt == 7:
-                raise
-            time.sleep(0.5)
+            time.sleep(min(0.25 * (attempt + 1), 2.0))
         else:
             return
+    path.write_text(text, encoding="utf-8", newline="\n")  # last resort, in place
+    temporary.unlink(missing_ok=True)
 
 
 def _fingerprint(items: Sequence[BenchmarkItem], config: ScanConfig) -> dict[str, Any]:
