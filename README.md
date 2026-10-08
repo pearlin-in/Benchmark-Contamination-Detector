@@ -1,7 +1,3 @@
-Yes — here's a rewrite. I'm assuming you've now shipped Phases 0–6 and the tests pass. If that's wrong, say so and I'll adjust.
-
----
-
 # Benchmark Contamination Detector
 
 **Detect benchmark test-set contamination in open pretraining corpora — and measure how reliable that detection is.**
