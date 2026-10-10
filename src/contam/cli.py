@@ -131,6 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
     tune.add_argument("--no-window", action="store_true", help="whole-document containment")
     tune.add_argument("--stop-k", type=int, default=None)
     corpus = scan.add_argument_group("corpus slice")
+    corpus.add_argument("--corpus-path", default="HuggingFaceFW/fineweb", help="HF dataset id")
     corpus.add_argument("--corpus-config", default="sample-10BT", help="FineWeb config name")
     corpus.add_argument("--corpus-jsonl", type=Path, default=None, help="scan a local JSONL file")
     corpus.add_argument("--max-tokens", type=int, default=None, help="stop after this many tokens")
@@ -354,10 +355,14 @@ def _scan_source(
 
     def from_fineweb() -> Iterable[RawDocument]:
         return stream_documents(
-            name=args.corpus_config, max_docs=args.max_docs, max_tokens=args.max_tokens
+            path=args.corpus_path,
+            name=args.corpus_config,
+            max_docs=args.max_docs,
+            max_tokens=args.max_tokens,
         )
 
-    return from_fineweb, f"fineweb:{args.corpus_config}:{args.max_docs}:{args.max_tokens}"
+    source = f"{args.corpus_path}:{args.corpus_config}:{args.max_docs}:{args.max_tokens}"
+    return from_fineweb, f"fineweb:{source}"
 
 
 def _run_scan(args: argparse.Namespace) -> int:
