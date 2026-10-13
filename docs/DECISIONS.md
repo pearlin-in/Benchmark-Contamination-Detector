@@ -2,7 +2,7 @@
 
 This file records every non-trivial choice in the project: what was chosen, what else was considered, and **what evidence justified it**. It is the main place a reader sees that you understand *why*, not just *what*.
 
-Entries D-001 to D-018 come from `SCOPE.md` section 6. Entries D-028 to D-033 were added during roadmap phases 2-3, D-034 to D-040 during phase 4, and D-041 to D-045 during phase 5, and D-047 to D-052 are the design for phase 6. Each entry lists the **experiment that will confirm or change it**, and has a **Result** field that stays empty until you have actually run that experiment. **Never write a Result before running the experiment.** A result written in advance is the one thing this file must never contain.
+Entries D-001 to D-018 come from `SCOPE.md` section 6. Entries D-028 to D-033 were added during roadmap phases 2-3, D-034 to D-040 during phase 4, and D-041 to D-045 during phase 5, and D-047 to D-052 are the design for phase 6, and D-053 to D-055 record what the phase 6 scans showed. Each entry lists the **experiment that will confirm or change it**, and has a **Result** field that stays empty until you have actually run that experiment. **Never write a Result before running the experiment.** A result written in advance is the one thing this file must never contain.
 
 IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the table near the end), which is why the numbering jumps from D-018 to D-028.
 
@@ -78,12 +78,15 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 | D-043 | LSH banding and S-curve check | Provisional |
 | D-044 | Windowed fuzzy matching with exact verification | Changed |
 | D-045 | Within-benchmark near-duplicate detection | Provisional |
-| D-047 | Window-localized containment | Provisional |
+| D-047 | Window-localized containment | Changed |
 | D-048 | Tighter false-positive bound and more controls | Provisional |
 | D-049 | Scan architecture: bounded batches in a spawn process pool | Provisional |
 | D-050 | Exactly-once checkpointing and resume | Provisional |
 | D-051 | Hit records and snippets | Locked |
 | D-052 | Headline metric: item-level rates with intervals | Locked |
+| D-053 | Short items drive partial-level hits | Provisional |
+| D-054 | Scan setting and its measured recall | Provisional |
+| D-055 | FineWeb-Edu comparison (RQ5) | Provisional |
 
 ---
 
@@ -239,7 +242,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Decision:** Both planted ground truth (recall) and hand-labeled real hits (precision).
 - **Rationale:** Each covers the other's blind spot: planted data can be unrealistic; hand-labels only cover what was found.
 - **Experiment:** Write the labeling rubric *before* labeling: categories `true contamination`, `coincidental template overlap`, `benign (discussion/quote)`. Label about 150 hits stratified by score band and benchmark; relabel 30 later and record agreement.
-- **Result:** *(empty)*
+- **Result:** Hand-labelled 122 of the 244 hits produced by the two main scans (loose scan of the 100M-token FineWeb slice and the 1B-token FineWeb-Edu scan), judged from the stored excerpt of at most 200 normalized characters: 0 true contamination, 122 coincidental or benign overlap. The Wilson 95% upper bound on the true-contamination share of hits is about 3.1%. Single labeller; the 30-hit relabel check and the record of how the 122 were chosen from the 244 are still to do.
 - **Tradeoff:** Hand-labeling is slow and subjective.
 - **Revisit if:** agreement with your own earlier labels is poor (tighten the rubric).
 
@@ -436,11 +439,11 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Revisit if:** the empirical curve disagrees with theory (a bug).
 
 ### D-044: Windowed fuzzy matching with exact verification
-- **Status:** Changed (explanation corrected by D-053) | **Phase:** 5
+- **Status:** Changed | **Phase:** 5
 - **Decision:** Slide windows sized to the item's token length across each document. A window signature is the elementwise minimum of the per-shingle signatures it contains (computed with a rolling minimum, so each shingle is hashed once). LSH proposes candidate (window, item) pairs; each candidate is verified by exact containment of the item's word k-shingles (k = 2 or 3, decided in D-046) and kept only above a verification threshold tuned on dev data (D-011).
 - **Rationale:** Whole-document signatures are too coarse for short items; verification keeps precision high.
 - **Experiment:** Run on the planted harness and compare recall by condition against exact n=2, 3 and 5; measure documents per second and memory.
-- **Result:** Run on the compare corpus (about 1,300 documents). Fuzzy k=2 matched exact n=2 on recall (0.93 vs 0.94 at 30% deletion, 0.85 vs 0.94 at 30% substitution) and flagged 10/300 controls versus 138/300. Fuzzy k=3 was slightly below exact n=3 (0.67 vs 0.72 at 30% deletion). Time: exact n=2 23 s, n=3 3.7 s, n=5 3.2 s, fuzzy k=2 104 s, fuzzy k=3 203 s. Conclusion corrected by D-053: the fuzzy method's precision came from LSH gating, not from windowing. Windowed n=3 behaved exactly like exact n=3. M2 is not carried into the main scan.
+- **Result:** Run on the compare corpus (about 1,300 documents, question-only view, threshold 0.3). Fuzzy k=2 matched exact n=2 on recall (0.93 vs 0.94 at 30% deletion) and flagged 10/300 controls versus 138/300; fuzzy k=3 was slightly below exact n=3 (0.67 vs 0.72). Time: exact n=2 23 s, n=3 3.7 s, n=5 3.2 s, fuzzy k=2 104 s, fuzzy k=3 203 s. CORRECTION after phase 6: an earlier version of this entry credited window-localized verification for the precision gain, but a window-localized exact detector flagged 117/300 controls at n=2 (see D-047), so the fuzzy method's precision most likely came from LSH gating, which acts like an implicit similarity threshold. Either way MinHash costs about 40 times more than exact n=3 (97.9 s vs 2.5 s in the later compare run) for no recall gain, so it is not used in the main scan.
 - **Tradeoff:** Much slower than the exact detector; report the cost honestly.
 - **Revisit if:** exact n=3 gives the same recall at lower cost (see D-041).
 
@@ -453,13 +456,13 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 
 
 ### D-047: Window-localized containment
-- **Status:** Provisional (mechanism corrected by D-053) | **Phase:** 6
+- **Status:** Changed | **Phase:** 6
 - **Context:** Whole-document containment is not scale-invariant at low n: at n=2, 46% of ordinary web pages crossed the 0.3 threshold (138 of 300 controls) because common word pairs accumulate over a long page. The windowed fuzzy method flagged only 10 of 300 at the same recall, because it measures overlap inside an item-sized window (D-044 result).
-- **Decision:** Keep the exact n-gram index as the fast scanner, but score each candidate item by the most distinct n-grams found inside any window of `ceil(window_slack * item length)` n-gram positions. The default slack is 1.5. Exact (contiguous) verification is unchanged.
+- **Decision:** Window localization stays available (default slack 1.5 in the scanner), but it is not what controls precision. Precision at low n comes from the n-gram size, the stop-n-gram filter and the threshold (D-054).
 - **Rationale:** It gives the windowed method's precision at the exact detector's speed, and a verbatim copy is unaffected (containment 1.0).
 - **Implemented in:** `best_window` and `ExactIndex.scan_document(window_slack=...)` in `src/contam/exact.py`.
 - **Experiment:** Run `contam evaluate ... --n 2 --n 3 --n 4 --window-slack 1.5 --window-slack 2` and compare control flags and recall with and without windowing at the same n; also `contam compare --windowed-n 2 --windowed-n 3`.
-- **Result:** - *(corrected by D-053)* Compare run, question-only view, threshold 0.3, 300 controls: exact n=2 flagged 138, windowed n=2 flagged 117, fuzzy k=2 flagged 10. Windowing helped only slightly; the fuzzy method's precision came from LSH gating. Windowed n=3 = exact n=3 (same 3 flags, same recall). Question+choices view: 10/500 → 0/1000, but the control sets differed, so this is not a controlled comparison. The controlled comparison is `results/phase6_eval/test_sweep.csv`. Strict rerun (n=3, partial 0.5, stop-k 5) found 0 hits across 143,176 documents / 76,425,015 tokens. Do not cite this entry as evidence that windowing is what keeps false positives down.
+- **Result:** Compare run (question-only view, threshold 0.3, 300 controls, 50 plants per condition): window-localized n=2 flagged 117 controls versus 138 for whole-document n=2 (earlier run), a small effect, with recall 0.94 at 30% deletion and 0.92 at 30% substitution. Window-localized n=3 behaved like whole-document n=3: 3 controls flagged, recall 0.70 vs 0.72 and 0.58 vs 0.58. The 0/1000 flag rate in the question+choices view cannot be compared directly because the control sets and views differ. The hypothesis that windowing fixes the low-n false positives is not supported.
 - **Tradeoff:** Overlap spread over a long passage (an item quoted in pieces) counts for less.
 - **Revisit if:** windowed recall falls well below whole-document recall on `html_split` or `truncate` conditions.
 
@@ -468,7 +471,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Context:** With 500 controls and a bound of 0.05 on the Wilson upper limit, the selection rule accepted n=2 at 10 of 500 controls flagged (D-039 result).
 - **Decision:** For the next evaluation run use a bound of 0.02 with 1,000 controls (`--max-control-fpr 0.02 --controls 1000`), which allows up to about 11 flagged controls in 1,000. Keep reporting the 0.05 variant for comparison.
 - **Experiment:** Rerun the widened-grid evaluation under both bounds and compare the selected points.
-- **Result:** *(empty)*
+- **Result:** Rerun with bound 0.02, 1,000 controls and n in {2, 3, 4}, windows none/1.5/2 (question+choices view, real data): selected n=2, partial 0.3, near 0.9, test macro recall 0.997, 0/1000 controls flagged (upper bound 0.004). The tighter bound did not change the selection because controls never flagged in this view. Control flags are therefore not informative about precision on topically related pages (see D-037 and D-053).
 - **Revisit if:** flagged controls turn out to be genuine contamination, which would make the bound penalize correct detections.
 
 ### D-049: Scan architecture: bounded batches in a spawn process pool
@@ -477,7 +480,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Rationale:** Memory stays flat on any corpus size, and output is byte-identical for one worker or many.
 - **Implemented in:** `run_scan` in `src/contam/scan.py`.
 - **Experiment:** Compare tokens per second for 1, 2 and 4+ workers on the same slice; confirm identical output files (a test does this).
-- **Result:** *(empty)*
+- **Result:** 11 workers on a Windows laptop: 129k to 209k words/s at the loose setting (hits and snippets being written), 561k words/s at the strict setting on the same 143,176 documents, and 1.47M words/s over 965,087 FineWeb-Edu documents (761M words, 519 s) with the strict setting. A one-worker timing and a worker-count comparison were not run. Output byte-identity for 1 versus 2 workers is covered by a unit test.
 - **Tradeoff:** Each worker holds its own copy of the index.
 - **Revisit if:** the main process (streaming and pickling) becomes the bottleneck.
 
@@ -486,7 +489,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Decision:** After every committed batch the hits file is flushed and `checkpoint.json` is written atomically, recording documents done and the exact byte size of the hits file. A resumed run truncates any half-written tail, skips the documents already processed by re-reading the stream, and refuses to resume if a fingerprint of the settings (items, thresholds, window, source) differs. Writes retry on `PermissionError` because OneDrive or antivirus can lock files.
 - **Implemented in:** `run_scan` in `src/contam/scan.py`; crash, truncation and fingerprint tests in `tests/unit/test_scan.py`.
 - **Experiment:** Interrupt a real scan (Ctrl+C), resume it, and diff the output against an uninterrupted run on a small slice.
-- **Result:** - Real-world test (accidental): `os.replace` hit `PermissionError` on OneDrive, which locked the file. The retry window was about 2 s, too short. `--resume` picked up at 100,000 documents and the hit counts continued cleanly, with no double counting. Follow-up: `_atomic_write_json` in `src/contam/scan.py` extended to 60 attempts with `time.sleep(min(0.25 * (attempt + 1), 2.0))` and a final in-place write as last resort; long runs should write outside OneDrive, e.g. `--out C:\contam_scans\tier_s`. This is the crash-and-resume story for the README.
+- **Result:** A real 100M-token scan crashed at about 100,000 documents with `PermissionError: [WinError 5]` from `os.replace` on `checkpoint.json.tmp` (the repo is inside OneDrive); the 8 retries over about 2 seconds were not enough. Rerunning with `--resume` continued from the checkpoint (158 hits at the crash, 231 at the end) and finished normally. Lengthening the retry window is a follow-up, and long scans should write outside OneDrive.
 - **Tradeoff:** Resuming re-downloads the skipped part of the stream.
 - **Revisit if:** the skip cost becomes large on tier-M or tier-L slices (then store the stream position).
 
@@ -500,19 +503,32 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Status:** Locked | **Phase:** 6
 - **Decision:** Report, per benchmark, the number and percentage of items with at least one hit at each level (partial or more, near-duplicate or more, exact), counted once per item at its strongest level, with Wilson 95% intervals over indexed items. State plainly that these are lower bounds for a corpus slice and say nothing about any model.
 - **Implemented in:** `src/contam/report.py`.
-- **Result:** Strict scan (`--n 3 --partial 0.5 --stop-k 5`, question_choices view, ~100M FineWeb tokens): 143,176 documents, 76,425,015 tokens, 136 s (561,314 tokens/s). Per benchmark: ARC-Challenge 1,172 indexed, 0 flagged at partial / near-dup / exact, Wilson 95% [0.00%, 0.33%]; GSM8K 1,319 indexed, 0 flagged, Wilson 95% [0.00%, 0.29%]. 0 items skipped as too short or template-only. The looser run (n=2, partial 0.3) produced 34 partial hits; inspection showed template phrases and topic lists, not contamination. These are lower bounds for a corpus slice and say nothing about any model.
+- **Result:** Loose setting (n=2, partial 0.3, window 1.5) on a 100M-token FineWeb slice (143,176 documents): ARC-Challenge 31/1,172 items with a partial-level hit [1.87%, 3.73%], GSM8K 3/1,319 [0.08%, 0.67%], 0 near-duplicate and 0 exact. Strict setting (n=3, partial 0.5, near 0.9, stop-k 5, window 1.5) on the same documents: 0 items flagged in both benchmarks. Strict setting on a 1B-token FineWeb-Edu slice (965,087 documents): ARC 2/1,172 partial [0.05%, 0.62%], GSM8K 0/1,319, 0 near-duplicate, 0 exact. All are lower bounds for the slice.
 
-### D-053: Correction to D-044 and D-047 — windowing vs LSH gating
-- **Status:** Confirmed | **Phase:** 6 | **Date:** 2026-10-08
-- **Context:** D-044 and D-047 credited window-localized verification with keeping false positives down at low n. The compare run contradicts that explanation.
-- **Options:** leave D-044/D-047 as written; edit them in place; add an explicit correction entry and point the old ones at it.
-- **Decision:** Add this entry, edit D-044 and D-047 Results to point here, and do not cite them as evidence that windowing is what keeps false positives down.
-- **Rationale:** A wrong explanation of a right result is worse than no explanation, because it propagates. The correction is small and the record should show it was caught before the result was cited.
-- **Implemented in:** `docs/DECISIONS.md` (this entry); D-044 and D-047 Result fields.
-- **Experiment:** Compare run, question-only view, threshold 0.3, 300 controls, GSM8K + ARC-Challenge: exact n=2 flagged 138, windowed n=2 flagged 117, fuzzy k=2 flagged 10. Windowed n=3 behaved exactly like exact n=3 (same 3 flags, same recall). In the question+choices view, flags went 10/500 → 0/1000, but the two runs used different control sets, so it is not a controlled comparison. The controlled comparison is `results/phase6_eval/test_sweep.csv`, filtered to n=2, partial 0.3, near 0.9, spec verbatim, view question_choices, stop_ngram_k empty.
-- **Result:** Windowed n=2 improved on exact n=2 (117 vs 138 of 300), but fuzzy k=2 was far better (10 of 300) at the same recall. The fuzzy method's precision therefore came from LSH gating (a Jaccard-like threshold), not from windowing. Windowing is a small effect, not the mechanism. Strict rerun (n=3, partial 0.5, stop-k 5, question_choices view) found 0 hits across 143,176 documents / 76,425,015 tokens in 136 s, consistent with the earlier partial hits being template noise rather than contamination.
-- **Tradeoff / what we gave up:** The windowed detector is still in the codebase (`window_slack` in `ExactIndex.scan_document`) and may still help at n=2, but it is not the headline mechanism. The headline scan uses strict settings and reports 0 hits.
-- **Revisit if:** a controlled sweep (same controls, same corpus, windowing on/off at the same n) shows windowing moving the flag rate by more than a few controls.
+
+### D-053: Short items drive partial-level hits
+- **Status:** Provisional | **Phase:** 6
+- **Context:** Partial-level hits need only half of an item's n-grams inside a window, so a very short item can be crossed by an ordinary fact sentence.
+- **Decision:** Report items with fewer than 15 tokens separately and do not count their partial-level hits toward the headline. Near-duplicate and exact levels are unaffected.
+- **Experiment:** Count hits and distinct hit items by item length across the scan folders (`scripts/hits_by_length.py`).
+- **Result:** 42 of 2,491 items (1.7%, all in ARC) have fewer than 15 tokens, but they produced 205 of 244 hits (84%). 15 of the 42 short items were hit (36%) versus 19 of 2,449 other items (0.8%), about a 46-fold difference. The hand-labelled hits (D-012) were all coincidental.
+- **Tradeoff:** A genuinely leaked short question is only counted at the near-duplicate or exact level.
+- **Revisit if:** short items appear at exact level in a larger scan (then inspect them individually).
+
+### D-054: Scan setting and its measured recall
+- **Status:** Provisional | **Phase:** 6
+- **Decision:** The scan that supports the headline result uses n=3, partial 0.5, near-duplicate 0.9, stop-n-gram k=5, window slack 1.5, question+choices view. These values were fixed before the planted-data check below, which used the held-out test split (100 plants per condition, so about +/-0.1 at mid-range recall).
+- **Experiment:** `contam evaluate ... --n 3 --stop-k 5 --window-slack 1.5`, then read `test_sweep.csv` at that setting.
+- **Result:** Recall by condition: verbatim 1.00; format noise 1.00; punctuation deleted 0.99; 5% word deletion/substitution 1.00; 10% deletion 0.99, substitution 0.99; 20% deletion 0.57, substitution 0.65; 30% deletion 0.12, substitution 0.18; truncation to 80% 1.00, to 60% 0.97; numbers changed 0.93; choices shuffled 0.96; labelled options 0.93 to 0.96; HTML wrapping and splitting 1.00. Interpretation: the negative scan result covers verbatim, reformatted, truncated and lightly edited copies (up to about 10% of words changed). Heavily rewritten copies would be mostly missed.
+- **Tradeoff:** A higher partial threshold buys precision at the cost of recall on heavy edits (the frozen dev-selected point at partial 0.3 had recall 0.62 and 0.72 at 30% deletion and substitution).
+- **Revisit if:** a sensitivity scan at partial 0.3 turns up hits that hand-labelling confirms.
+
+### D-055: FineWeb-Edu comparison (RQ5)
+- **Status:** Provisional | **Phase:** 6
+- **Decision:** Scan a 1B-token slice of FineWeb-Edu (`sample-10BT`) with the D-054 setting, because educational pages are likelier to contain quiz questions.
+- **Result:** 965,087 documents (761M words): 0 exact and 0 near-duplicate items; 2 ARC items with partial-level hits (13 hits, 10 or more of them the same item matching the phrase "is the largest organ in the human body" in ordinary educational pages) and 0 GSM8K items. A like-for-like scan of plain FineWeb at 1B tokens has not been run, so no web-versus-edu comparison is claimed.
+- **Tradeoff:** One slice of one sample is a small fraction of the corpus (D-052).
+
 ---
 
 ## Decisions you will need to add (reserved IDs)
@@ -529,7 +545,7 @@ These don't exist yet because they depend on evidence. Create each entry when yo
 | D-024 | Checkpoint format and resume strategy | before the full scan |
 | D-025 | Multiprocessing design and deterministic merge | before the full scan |
 | D-026 | Hit-list output schema | before the full scan |
-| D-027 | Whether to run the FineWeb-Edu comparison (RQ5) | after the main scan |
+| D-027 | Whether to run the FineWeb-Edu comparison (RQ5) | done, see D-055 |
 | D-046 | Final M2 parameters | not needed: M2 is not used in the main scan (see D-044) |
 
 ---
@@ -540,7 +556,6 @@ These don't exist yet because they depend on evidence. Create each entry when yo
 | --- | --- | --- | --- |
 | 2026-10-05 | Phase 5 scope refined: the fuzzy method is compared against exact n=2 and n=3, and within-benchmark duplicate detection is added | Phase 4 showed recall tracks (1 - p)^n, so MinHash over the same n-grams cannot help by itself | D-041 |
 | 2026-10-07 | Phase 6 scan uses window-localized exact containment instead of MinHash; selection bound to be tightened | Phase 5 showed windowing, not MinHash, removed the low-n false positives, and the 0.05 bound let n=2 through at a 2% flag rate | D-047, D-048 |
-| 2026-10-08 | Corrected D-044 and D-047: windowing is not what keeps false positives down; LSH gating is | Compare run showed windowed n=2 only 117 vs exact n=2 138 of 300, while fuzzy k=2 was 10 of 300; windowed n=3 = exact n=3 | D-053 |
-| 2026-10-08 | Extended D-050 retry window and moved long-run output outside OneDrive | Real `PermissionError` from a OneDrive file lock during a scan; resume worked but the retry window was too short | D-050 |
-| 2026-10-08 | Recorded the strict-scan headline: 0 exact / 0 near-dup / 0 partial for 2,491 items in ~76M FineWeb tokens | Template hypothesis confirmed; earlier partial hits were template noise | D-052 |
+| 2026-10-13 | Correction: windowing did not remove the n=2 false positives (138 to 117 of 300 flagged); the headline scan uses n=3, partial 0.5, stop-k 5 | Phase 6 compare run and strict scan | D-044, D-047, D-054 |
 
+*(Every edit to a success criterion in `SCOPE.md` section 7 must appear here.)*
