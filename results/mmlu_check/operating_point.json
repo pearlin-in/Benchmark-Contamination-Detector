@@ -1,0 +1,19 @@
+{
+  "context": {
+    "max_control_fpr_upper": 0.02,
+    "n_dev_items": 6995,
+    "n_dev_plants": 2000,
+    "seed": 0,
+    "selected_on": "dev"
+  },
+  "operating_point": {
+    "control_fpr_upper": 0.003826898586390522,
+    "macro_recall": 0.952,
+    "n": 3,
+    "near_duplicate": 0.9,
+    "partial": 0.3,
+    "stop_ngram_k": 5,
+    "view": "question_choices",
+    "window_slack": null
+  }
+}
