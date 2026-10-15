@@ -1,6 +1,6 @@
 # contam: detecting benchmark test-set contamination, and measuring how reliable the detector is
 
-[![CI](https://github.com/YOUR_USERNAME/contamination-detector/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/contamination-detector/actions/workflows/ci.yml)
+[![CI](https://github.com/pearlin-in/Benchmark-Contamination-Detector/actions/workflows/ci.yml/badge.svg)](https://github.com/pearlin-in/Benchmark-Contamination-Detector/actions/workflows/ci.yml)
 
 Benchmark test sets such as GSM8K and ARC also live on the public web. If test items sit inside the text a model trains on, its score may reflect memorization rather than ability. This project scans open web corpora for benchmark items **and validates the detector itself** with planted ground truth and hand-labelled real hits, so that a "found nothing" result can be trusted for what it covers.
 
