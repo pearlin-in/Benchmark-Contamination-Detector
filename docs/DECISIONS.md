@@ -2,7 +2,7 @@
 
 This file records every non-trivial choice in the project: what was chosen, what else was considered, and **what evidence justified it**. It is the main place a reader sees that you understand *why*, not just *what*.
 
-Entries D-001 to D-018 come from `SCOPE.md` section 6. Entries D-028 to D-033 were added during roadmap phases 2-3, D-034 to D-040 during phase 4, and D-041 to D-045 during phase 5, and D-047 to D-052 are the design for phase 6, and D-053 to D-055 record what the phase 6 scans showed. Each entry lists the **experiment that will confirm or change it**, and has a **Result** field that stays empty until you have actually run that experiment. **Never write a Result before running the experiment.** A result written in advance is the one thing this file must never contain.
+Entries D-001 to D-018 come from `SCOPE.md` section 6. Entries D-028 to D-033 were added during roadmap phases 2-3, D-034 to D-040 during phase 4, and D-041 to D-045 during phase 5, and D-047 to D-052 are the design for phase 6, D-053 to D-055 record what the phase 6 scans showed, and D-056 records the MMLU findings and the hand labels. Each entry lists the **experiment that will confirm or change it**, and has a **Result** field that stays empty until you have actually run that experiment. **Never write a Result before running the experiment.** A result written in advance is the one thing this file must never contain.
 
 IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the table near the end), which is why the numbering jumps from D-018 to D-028.
 
@@ -87,6 +87,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 | D-053 | Short items drive partial-level hits | Provisional |
 | D-054 | Scan setting and its measured recall | Provisional |
 | D-055 | FineWeb-Edu comparison (RQ5) | Provisional |
+| D-056 | MMLU findings and how hand labels define the headline | Provisional |
 
 ---
 
@@ -242,7 +243,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Decision:** Both planted ground truth (recall) and hand-labeled real hits (precision).
 - **Rationale:** Each covers the other's blind spot: planted data can be unrealistic; hand-labels only cover what was found.
 - **Experiment:** Write the labeling rubric *before* labeling: categories `true contamination`, `coincidental template overlap`, `benign (discussion/quote)`. Label about 150 hits stratified by score band and benchmark; relabel 30 later and record agreement.
-- **Result:** Hand-labelled 122 of the 244 hits produced by the two main scans (loose scan of the 100M-token FineWeb slice and the 1B-token FineWeb-Edu scan), judged from the stored excerpt of at most 200 normalized characters: 0 true contamination, 122 coincidental or benign overlap. The Wilson 95% upper bound on the true-contamination share of hits is about 3.1%. Single labeller; the 30-hit relabel check and the record of how the 122 were chosen from the 244 are still to do.
+- **Result:** Hand-labelling done with `scripts/label_hits.py` (single labeller, judged from the stored excerpt of at most 200 normalized characters; labels t = question text on the page, b = page quotes or discusses the question, p = page quotes only the same source passage, c = coincidental). MMLU hits on the 1B-token FineWeb-Edu slice, all 159 labelled: 70 t, 30 b, 46 p, 13 c (t alone 44.0% [36.5%, 51.8%]; t or b 62.9% [55.2%, 70.0%]). ARC hits on the same slice, all 13 labelled: 12 t, 1 c (RE-CHECK PENDING: 12 of the 13 excerpts read like ordinary encyclopedic sentences, so these labels need a second look). Loose-scan ARC and GSM8K hits: 20 highest-containment labelled as 2 p, 17 c, 1 t; 20 random hits all c; the other 191 loose hits are unlabelled. These are hit-level counts, not item-level. Still to do: the relabel-30 agreement check and item-level counts.
 - **Tradeoff:** Hand-labeling is slow and subjective.
 - **Revisit if:** agreement with your own earlier labels is poor (tighten the rubric).
 
@@ -503,7 +504,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Status:** Locked | **Phase:** 6
 - **Decision:** Report, per benchmark, the number and percentage of items with at least one hit at each level (partial or more, near-duplicate or more, exact), counted once per item at its strongest level, with Wilson 95% intervals over indexed items. State plainly that these are lower bounds for a corpus slice and say nothing about any model.
 - **Implemented in:** `src/contam/report.py`.
-- **Result:** Loose setting (n=2, partial 0.3, window 1.5) on a 100M-token FineWeb slice (143,176 documents): ARC-Challenge 31/1,172 items with a partial-level hit [1.87%, 3.73%], GSM8K 3/1,319 [0.08%, 0.67%], 0 near-duplicate and 0 exact. Strict setting (n=3, partial 0.5, near 0.9, stop-k 5, window 1.5) on the same documents: 0 items flagged in both benchmarks. Strict setting on a 1B-token FineWeb-Edu slice (965,087 documents): ARC 2/1,172 partial [0.05%, 0.62%], GSM8K 0/1,319, 0 near-duplicate, 0 exact. All are lower bounds for the slice.
+- **Result:** Loose setting (n=2, partial 0.3, window 1.5) on a 100M-token FineWeb slice (143,176 documents): ARC-Challenge 31/1,172 items with a partial-level hit [1.87%, 3.73%], GSM8K 3/1,319 [0.08%, 0.67%], 0 near-duplicate and 0 exact. Strict setting (n=3, partial 0.5, near 0.9, stop-k 5, window 1.5) on the same documents: 0 items flagged in both benchmarks. Strict setting on a 1B-token FineWeb-Edu slice (965,087 documents): ARC 2/1,172 partial [0.05%, 0.62%], GSM8K 0/1,319, 0 near-duplicate, 0 exact. All are lower bounds for the slice. MMLU (14,042 items), strict setting, same 1B-token FineWeb-Edu slice: 159 hits, 112 items with a partial-or-higher hit, 2 near-duplicate items, 0 exact. Hand labels (D-012, D-056) show that most real MMLU findings sit at partial level, so the near-duplicate level alone understates exposure.
 
 
 ### D-053: Short items drive partial-level hits
@@ -511,7 +512,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Context:** Partial-level hits need only half of an item's n-grams inside a window, so a very short item can be crossed by an ordinary fact sentence.
 - **Decision:** Report items with fewer than 15 tokens separately and do not count their partial-level hits toward the headline. Near-duplicate and exact levels are unaffected.
 - **Experiment:** Count hits and distinct hit items by item length across the scan folders (`scripts/hits_by_length.py`).
-- **Result:** 42 of 2,491 items (1.7%, all in ARC) have fewer than 15 tokens, but they produced 205 of 244 hits (84%). 15 of the 42 short items were hit (36%) versus 19 of 2,449 other items (0.8%), about a 46-fold difference. The hand-labelled hits (D-012) were all coincidental.
+- **Result:** 42 of 2,491 items (1.7%, all in ARC) have fewer than 15 tokens, but they produced 205 of 244 ARC and GSM8K hits (84%). 15 of the 42 short items were hit (36%) versus 19 of 2,449 other items (0.8%), about a 46-fold difference. Hand labels (D-012) of the loose-scan hits: among the 20 highest-containment hits 17 were coincidental, 2 shared source text and 1 was true contamination; all 20 random hits were coincidental. The 191 other loose hits are unlabelled.
 - **Tradeoff:** A genuinely leaked short question is only counted at the near-duplicate or exact level.
 - **Revisit if:** short items appear at exact level in a larger scan (then inspect them individually).
 
@@ -519,15 +520,26 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Status:** Provisional | **Phase:** 6
 - **Decision:** The scan that supports the headline result uses n=3, partial 0.5, near-duplicate 0.9, stop-n-gram k=5, window slack 1.5, question+choices view. These values were fixed before the planted-data check below, which used the held-out test split (100 plants per condition, so about +/-0.1 at mid-range recall).
 - **Experiment:** `contam evaluate ... --n 3 --stop-k 5 --window-slack 1.5`, then read `test_sweep.csv` at that setting.
-- **Result:** Recall by condition: verbatim 1.00; format noise 1.00; punctuation deleted 0.99; 5% word deletion/substitution 1.00; 10% deletion 0.99, substitution 0.99; 20% deletion 0.57, substitution 0.65; 30% deletion 0.12, substitution 0.18; truncation to 80% 1.00, to 60% 0.97; numbers changed 0.93; choices shuffled 0.96; labelled options 0.93 to 0.96; HTML wrapping and splitting 1.00. Interpretation: the negative scan result covers verbatim, reformatted, truncated and lightly edited copies (up to about 10% of words changed). Heavily rewritten copies would be mostly missed.
+- **Result:** Recall by condition: verbatim 1.00; format noise 1.00; punctuation deleted 0.99; 5% word deletion/substitution 1.00; 10% deletion 0.99, substitution 0.99; 20% deletion 0.57, substitution 0.65; 30% deletion 0.12, substitution 0.18; truncation to 80% 1.00, to 60% 0.97; numbers changed 0.93; choices shuffled 0.96; labelled options 0.93 to 0.96; HTML wrapping and splitting 1.00. Interpretation: the negative scan result covers verbatim, reformatted, truncated and lightly edited copies (up to about 10% of words changed). Heavily rewritten copies would be mostly missed. Caveat from hand-labelling (D-012): 1 of the 20 highest-containment hits of the loose scan was labelled true contamination, yet the strict scan flagged nothing on the same 143,176 documents, so the strict setting does miss at least some real partial copies. The earlier reading that zero strict hits means no contamination is withdrawn; the supported claim is that no exact or near-duplicate copy was found in ARC and GSM8K.
 - **Tradeoff:** A higher partial threshold buys precision at the cost of recall on heavy edits (the frozen dev-selected point at partial 0.3 had recall 0.62 and 0.72 at 30% deletion and substitution).
 - **Revisit if:** a sensitivity scan at partial 0.3 turns up hits that hand-labelling confirms.
 
 ### D-055: FineWeb-Edu comparison (RQ5)
 - **Status:** Provisional | **Phase:** 6
 - **Decision:** Scan a 1B-token slice of FineWeb-Edu (`sample-10BT`) with the D-054 setting, because educational pages are likelier to contain quiz questions.
-- **Result:** 965,087 documents (761M words): 0 exact and 0 near-duplicate items; 2 ARC items with partial-level hits (13 hits, 10 or more of them the same item matching the phrase "is the largest organ in the human body" in ordinary educational pages) and 0 GSM8K items. A like-for-like scan of plain FineWeb at 1B tokens has not been run, so no web-versus-edu comparison is claimed.
+- **Result:** 965,087 documents (761M words), strict setting. ARC-Challenge and GSM8K: 0 exact, 0 near-duplicate; 2 ARC items with partial-level hits (13 hits, 12 of them the same item matching the phrase "is the largest organ in the human body") and 0 GSM8K items. Hand labels for these 13 ARC hits were 12 true and 1 coincidental, but that re-check is pending (see D-012). MMLU on the same slice: see D-052 and D-056. A like-for-like scan of plain FineWeb at 1B tokens has not been run, so no web-versus-edu comparison is claimed.
 - **Tradeoff:** One slice of one sample is a small fraction of the corpus (D-052).
+
+
+### D-056: MMLU findings and how hand labels define the headline
+- **Status:** Provisional | **Phase:** 7
+- **Context:** The 1B-token FineWeb-Edu scan of MMLU produced 159 hits (112 items with a partial-or-higher hit, 2 near-duplicates, 0 exact). Reading the pages behind the strongest hits showed a homework-help astronomy quiz page that contains two MMLU questions almost verbatim (with five options where MMLU has four) and an AP-statistics practice-test page that contains two question stems without options. Both look like the upstream sources the MMLU questions were drawn from, not copies of MMLU.
+- **Decision:** The headline for MMLU is the number of items with at least one hit labelled t ("the page contains the question text"), reported separately from t or b ("quotes or discusses it"). Labels p (same source passage only) and c (coincidental) do not count. Counts are item-level with Wilson intervals, never hit-level. Partial-level hits are labelled, not discarded, because partial level is where most true MMLU findings sit (stems found without options score below the 0.9 near-duplicate line).
+- **Implemented in:** `scripts/label_hits.py`, `scripts/show_doc.py`.
+- **Experiment:** Label every MMLU hit, then count distinct items with a t label and with a t or b label; repeat the labelling of a random 30 after a few days and report agreement.
+- **Result:** Hit-level, all 159 MMLU hits labelled: 70 t, 30 b, 46 p, 13 c (t alone 44.0% [36.5%, 51.8%]; t or b 62.9% [55.2%, 70.0%]). Item-level counts: [TODO: fill in from labels.csv]. Relabel agreement: [TODO].
+- **Tradeoff:** The boundary between t and b is a judgement call by one labeller reading 200-character excerpts.
+- **Revisit if:** the relabel agreement is low (then tighten the rubric and relabel).
 
 ---
 
@@ -557,5 +569,7 @@ These don't exist yet because they depend on evidence. Create each entry when yo
 | 2026-10-05 | Phase 5 scope refined: the fuzzy method is compared against exact n=2 and n=3, and within-benchmark duplicate detection is added | Phase 4 showed recall tracks (1 - p)^n, so MinHash over the same n-grams cannot help by itself | D-041 |
 | 2026-10-07 | Phase 6 scan uses window-localized exact containment instead of MinHash; selection bound to be tightened | Phase 5 showed windowing, not MinHash, removed the low-n false positives, and the 0.05 bound let n=2 through at a 2% flag rate | D-047, D-048 |
 | 2026-10-13 | Correction: windowing did not remove the n=2 false positives (138 to 117 of 300 flagged); the headline scan uses n=3, partial 0.5, stop-k 5 | Phase 6 compare run and strict scan | D-044, D-047, D-054 |
+| 2026-10-13 | Correction: hand-labelling had not been done, so the earlier claim of 0 true contamination in 122 labelled hits was removed | The claim came from an unverified summary, not from labels | D-012, D-053 |
+| 2026-10-15 | Added the MMLU scan and the hand labels; withdrew the reading that zero strict hits means no contamination | One of the 20 highest-containment loose hits was labelled true while the strict scan flagged nothing | D-012, D-054, D-056 |
 
 *(Every edit to a success criterion in `SCOPE.md` section 7 must appear here.)*
