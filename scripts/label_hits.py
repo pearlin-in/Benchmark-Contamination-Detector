@@ -1,12 +1,16 @@
 """Hand-label scan hits in the terminal (DECISIONS.md, D-012).
 
-The first run builds a sample and saves it; later runs resume where you stopped. Rows are
+First run builds a sample and saves it; every later run resumes where you stopped. Rows are
 ordered strongest-first, so stopping early still covers the hits that matter most.
+
+    python scripts\\label_hits.py ^
+        --all C:\\contam_scans\\edu_1b_mmlu --all C:\\contam_scans\\edu_1b ^
+        --sampled results\\scan_tier_s --out results\\labels.csv
 
 --all PATH      include every hit of that scan (repeatable)
 --sampled PATH  include the top --top hits by containment plus --random random others
 
-Labels:
+For each hit you see the benchmark item and the normalized excerpt from the web page.
   t  the page contains the test item itself (a copy)
   p  the page quotes the same SOURCE text the question quotes (e.g. a historical speech)
   c  only a coincidental phrase overlap
@@ -99,7 +103,7 @@ def main() -> None:
             parser.error("give at least one --all or --sampled scan folder")
         build_sample(args)
 
-    with args.out.open(encoding="utf-8", newline="") as handle:
+    with args.out.open(encoding="utf-8-sig", newline="") as handle:  # tolerates a BOM
         rows = list(csv.DictReader(handle))
     needed = sorted({row["item_id"].split(":", 1)[0] for row in rows})
     items = {item.item_id: item for name in needed for item in load_benchmark(name)}

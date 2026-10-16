@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 def load(path: str) -> dict[tuple[str, str], str]:
-    with Path(path).open(encoding="utf-8", newline="") as handle:
+    with Path(path).open(encoding="utf-8-sig", newline="") as handle:
         return {(r["item_id"], r["doc_id"]): r["label"] for r in csv.DictReader(handle)}
 
 
