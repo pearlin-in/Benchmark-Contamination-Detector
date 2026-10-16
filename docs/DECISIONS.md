@@ -2,7 +2,7 @@
 
 This file records every non-trivial choice in the project: what was chosen, what else was considered, and **what evidence justified it**. It is the main place a reader sees that you understand *why*, not just *what*.
 
-Entries D-001 to D-018 come from `SCOPE.md` section 6. Entries D-028 to D-033 were added during roadmap phases 2-3, D-034 to D-040 during phase 4, and D-041 to D-045 during phase 5, and D-047 to D-052 are the design for phase 6, D-053 to D-055 record what the phase 6 scans showed, and D-056 records the MMLU findings and the hand labels. Each entry lists the **experiment that will confirm or change it**, and has a **Result** field that stays empty until you have actually run that experiment. **Never write a Result before running the experiment.** A result written in advance is the one thing this file must never contain.
+Entries D-001 to D-018 come from `SCOPE.md` section 6. Entries D-028 to D-033 were added during roadmap phases 2-3, D-034 to D-040 during phase 4, and D-041 to D-045 during phase 5, and D-047 to D-052 are the design for phase 6, D-053 to D-055 record what the phase 6 scans showed, D-056 records the MMLU findings and the hand labels, and D-057 the stems-only MMLU scan. Each entry lists the **experiment that will confirm or change it**, and has a **Result** field that stays empty until you have actually run that experiment. **Never write a Result before running the experiment.** A result written in advance is the one thing this file must never contain.
 
 IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the table near the end), which is why the numbering jumps from D-018 to D-028.
 
@@ -88,6 +88,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 | D-054 | Scan setting and its measured recall | Provisional |
 | D-055 | FineWeb-Edu comparison (RQ5) | Provisional |
 | D-056 | MMLU findings and how hand labels define the headline | Provisional |
+| D-057 | Stems-only MMLU scan (question-only view) | Provisional |
 
 ---
 
@@ -243,7 +244,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Decision:** Both planted ground truth (recall) and hand-labeled real hits (precision).
 - **Rationale:** Each covers the other's blind spot: planted data can be unrealistic; hand-labels only cover what was found.
 - **Experiment:** Write the labeling rubric *before* labeling: categories `true contamination`, `coincidental template overlap`, `benign (discussion/quote)`. Label about 150 hits stratified by score band and benchmark; relabel 30 later and record agreement.
-- **Result:** Hand-labelling done with `scripts/label_hits.py` (single labeller, judged from the stored excerpt of at most 200 normalized characters; t = question text on the page, b = page quotes or discusses the question, p = page quotes only the same source passage, c = coincidental). MMLU hits on the 1B-token FineWeb-Edu slice, all 159 labelled: 70 t, 30 b, 46 p, 13 c; item-level: 61 items with a t-labelled hit and 75 with a t or b hit (see D-056). ARC hits on the same slice, all 13 labelled in the first pass as 12 t and 1 c, but inspection of two of the pages contradicts those labels: 12 of the 13 hits are the same short item ("largest organ in the human body"), one page read is ordinary prose ("The skin is the largest organ in the human body"), and one is a kids' trivia list containing the question "Which is the largest organ in the human body? Answer: The skin", which counts as a match only if the ARC item is that question. Re-labelling these 13 is pending. Loose-scan ARC and GSM8K hits: the 20 highest-containment hits were labelled 2 p, 17 c, 1 t, and that one t is the same short ARC item at containment 0.4167, so it is under the same re-check; 20 random hits were all c; the other 191 loose hits are unlabelled. A relabel session covered 30 rows (24 MMLU, 5 loose random, 1 loose top); the agreement figure is pending.
+- **Result:** Hand-labelling done with `scripts/label_hits.py` (single labeller, judged from the stored excerpt of at most 200 normalized characters; t = question text on the page, b = page quotes or discusses the question, p = page quotes only the same source passage, c = coincidental). MMLU hits on the 1B-token FineWeb-Edu slice, all 159 labelled: 70 t, 30 b, 46 p, 13 c; item-level: 61 items with a t-labelled hit and 75 with a t or b hit (see D-056). ARC hits on the same slice, all 13: the first pass (12 t, 1 c) was contradicted by inspecting two of the pages (one ordinary prose sentence, one generic kids' trivia list), and after re-labelling by the strict rule all 13 are coincidental (0 true; 95% upper bound 22.8%). Loose-scan ARC and GSM8K hits: the 20 highest-containment hits were labelled 2 p, 17 c, 1 t, and that one t is the same short ARC item at containment 0.4167, so it needs the same re-check; 20 random hits were all c; the other 191 loose hits are unlabelled. A relabel session covered 30 rows (24 MMLU, 5 loose random, 1 loose top); the agreement figure is pending.
 - **Tradeoff:** Hand-labeling is slow and subjective.
 - **Revisit if:** agreement with your own earlier labels is poor (tighten the rubric).
 
@@ -527,7 +528,7 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 ### D-055: FineWeb-Edu comparison (RQ5)
 - **Status:** Provisional | **Phase:** 6
 - **Decision:** Scan a 1B-token slice of FineWeb-Edu (`sample-10BT`) with the D-054 setting, because educational pages are likelier to contain quiz questions.
-- **Result:** 965,087 documents (761M words), strict setting. ARC-Challenge and GSM8K: 0 exact, 0 near-duplicate; 2 ARC items with partial-level hits (13 hits, 12 of them the same short item matching the phrase "is the largest organ in the human body") and 0 GSM8K items. The first-pass labels for these ARC hits (12 t, 1 c) are contradicted by the two pages inspected and are being re-checked (D-012), so no ARC contamination is claimed from this scan. MMLU on the same slice: see D-052 and D-056. A like-for-like scan of plain FineWeb at 1B tokens has not been run, so no web-versus-edu comparison is claimed.
+- **Result:** 965,087 documents (761M words), strict setting. ARC-Challenge and GSM8K: 0 exact, 0 near-duplicate; 2 ARC items with partial-level hits (13 hits, 12 of them the same short item matching the phrase "is the largest organ in the human body") and 0 GSM8K items. After re-labelling, all 13 ARC hits are coincidental (D-012), so no ARC contamination was found in this scan. MMLU on the same slice: see D-052 and D-056. A like-for-like scan of plain FineWeb at 1B tokens has not been run, so no web-versus-edu comparison is claimed.
 - **Tradeoff:** One slice of one sample is a small fraction of the corpus (D-052).
 
 
@@ -540,6 +541,16 @@ IDs D-019 to D-027 are reserved for decisions that depend on evidence (see the t
 - **Result:** Hit-level, all 159 MMLU hits labelled: 70 t, 30 b, 46 p, 13 c. Item-level: 61 of 14,042 MMLU items (0.43%, 95% interval [0.34%, 0.56%]) have at least one t-labelled hit, and 75 (0.53%, [0.43%, 0.67%]) have a t or b hit; the 70 t hits sit on 40 distinct pages. These are lower bounds: the slice is small, and stems found without their options can fall under the 0.5 threshold (planted copies truncated to 60% of the item were recalled at 0.85 on MMLU). Relabel agreement: [TODO: run scripts/agreement.py].
 - **Tradeoff:** The boundary between t and b is a judgement call by one labeller reading 200-character excerpts.
 - **Revisit if:** the relabel agreement is low (then tighten the rubric and relabel).
+
+
+### D-057: Stems-only MMLU scan (question-only view)
+- **Status:** Provisional | **Phase:** 7
+- **Context:** Real MMLU findings are often a question stem found without its options. Scanning the question-only view should find such pages, and planted copies truncated to 60% were recalled better in that view than in the question+choices view.
+- **Decision:** Do not use the question-only view for headline counts without a minimum item length. Analyse by item length (`scripts/filter_scan_by_length.py`) and label the survivors.
+- **Experiment:** Scan MMLU in the question-only view over the same 1B-token FineWeb-Edu slice (n=3, partial 0.5, near 0.9, stop-k 5, window 1.5) and check planted recall in that view.
+- **Result:** The scan produced 115,952 hits; 13,952 of 14,042 items were indexed (90 skipped as too short); 1,488 items had a partial-or-higher hit (10.66%, interval 10.16% to 11.19%), 342 near-duplicate and 231 exact. The ten strongest hits are short fragments appearing across many unrelated pages (for example "homo erectus was ..." and "archaeology is a subfield of anthropology which is"), apparently from items of only 3 to 6 tokens. They are treated as artifacts of very short stems (see D-053), not contamination, until the length-filtered hits are labelled. Planted recall on MMLU in this view at the scan setting (100 plants per condition): verbatim and formatting 1.00; 5% word edits 0.94 to 0.98; 10% 0.89 to 0.90; 20% 0.54 to 0.57; 30% 0.21 to 0.24; truncated to 80% and 60% 0.99 and 0.95; numbers changed 0.98; choices shuffled and labelled 1.00; HTML wrapping and splitting 0.94 to 1.00.
+- **Tradeoff:** Better recall on stem-only copies, but precision collapses on short stems. The planted controls (random pages) cannot show this, which is the same lesson as D-037.
+- **Revisit if:** the length-filtered, labelled hits show many stem-only copies missed by the question+choices scan.
 
 ---
 
@@ -572,5 +583,6 @@ These don't exist yet because they depend on evidence. Create each entry when yo
 | 2026-10-13 | Correction: hand-labelling had not been done, so the earlier claim of 0 true contamination in 122 labelled hits was removed | The claim came from an unverified summary, not from labels | D-012, D-053 |
 | 2026-10-15 | Added the MMLU scan and the hand labels; withdrew the reading that zero strict hits means no contamination | One of the 20 highest-containment loose hits was labelled true while the strict scan flagged nothing | D-012, D-054, D-056 |
 | 2026-10-16 | Withdrew the claim that the strict setting misses real copies, pending a re-check of the ARC labels; added item-level MMLU counts and MMLU recall | The only supporting label is for a short generic ARC item whose pages were prose or a trivia list | D-012, D-054, D-055, D-056 |
+| 2026-10-17 | ARC FineWeb-Edu hits re-labelled (all 13 coincidental); added the stems-only MMLU scan, judged dominated by short-item artifacts | Page inspection and the length of the excerpts | D-012, D-055, D-057 |
 
 *(Every edit to a success criterion in `SCOPE.md` section 7 must appear here.)*
