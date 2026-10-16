@@ -51,7 +51,7 @@ def build_sample(args: argparse.Namespace) -> None:
         ranked = _ranked(folder)
         chosen += [(f"{folder.name}_top", hit) for hit in ranked[: args.top]]
         rest = ranked[args.top :]
-        picked = random.Random(args.seed).sample(rest, min(args.random, len(rest)))
+        picked = random.Random(args.seed).sample(rest, min(args.random, len(rest)))  # noqa: S311
         chosen += [(f"{folder.name}_random", hit) for hit in picked]
     with args.out.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=FIELDS, lineterminator="\n")
