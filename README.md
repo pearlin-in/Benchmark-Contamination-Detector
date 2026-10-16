@@ -1,6 +1,6 @@
 # contam: detecting benchmark test-set contamination, and measuring how reliable the detector is
 
-[![CI](https://github.com/pearlin-in/Benchmark-Contamination-Detector/actions/workflows/ci.yml/badge.svg)](https://github.com/pearlin-in/Benchmark-Contamination-Detector/actions/workflows/ci.yml)
+[![CI](https://github.com/YOUR_USERNAME/contamination-detector/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/contamination-detector/actions/workflows/ci.yml)
 
 Benchmark test sets such as GSM8K and ARC also live on the public web. If test items sit inside the text a model trains on, its score may reflect memorization rather than ability. This project scans open web corpora for benchmark items **and validates the detector itself** with planted ground truth and hand-labelled real hits, so that a "found nothing" result can be trusted for what it covers.
 
@@ -14,7 +14,7 @@ Benchmark test sets such as GSM8K and ARC also live on the public web. If test i
 
 - **GSM8K and ARC-Challenge: no exact or near-duplicate copy was found in any scan.**
 - **MMLU: test questions do appear on web pages.** On the 1B-token FineWeb-Edu slice (strict setting) 112 of 14,042 MMLU items had a partial-or-higher hit, 2 were near-duplicates and none exact. I hand-labelled all 159 hits: 70 contained the question text, 30 more quoted or discussed it, 46 shared only a source passage (for example a historical speech) and 13 were coincidental. Verified items: **61 of 14,042 (0.43%, 95% interval [0.34%, 0.56%])** contain the question text on at least one page, and 75 (0.53%, [0.43%, 0.67%]) if pages that quote or discuss it are included. The 70 verified hits sit on 40 distinct pages. The pages found look like the original quiz and practice-test pages MMLU's questions were drawn from, the expected route by which web-sourced benchmark questions reach web corpora.
-- **Partial-level hits need labels, not thresholds.** For MMLU most real findings are partial-level (a question stem found without its options scores below the 0.9 near-duplicate line). For the loose ARC and GSM8K scan, 17 of the 20 highest-containment hits and all 20 random hits were coincidental, and 1 of the top 20 was labelled a copy, but it is a short, generic ARC item ("largest organ in the human body") at containment 0.42, and that label is being re-checked.
+- **Partial-level hits need labels, not thresholds.** For MMLU most real findings are partial-level (a question stem found without its options scores below the 0.9 near-duplicate line). For the loose ARC and GSM8K scan, 17 of the 20 highest-containment hits and all 20 random hits were coincidental, and 1 of the top 20 was labelled a copy, but it is the short, generic ARC item "largest organ in the human body" at containment 0.42 and is being re-checked. All 13 ARC hits from the FineWeb-Edu scan were coincidental after a re-check.
 - **Short items cause most weak hits.** Only 1.7% of items (42 of 2,491, all in ARC) have fewer than 15 tokens, yet they produced 84% of hits.
 - These are **lower bounds for a corpus slice**. They say nothing about any specific model.
 
@@ -39,6 +39,7 @@ Real corpora have no labels, so recall cannot be measured on them. I planted cor
 - **Lowering n buys recall and destroys precision.** At n=2, 138 of 300 ordinary web pages were flagged by a whole-document detector; at n=3 only 3.
 - **A MinHash/LSH fuzzy matcher I built from scratch was not worth it.** It matched exact n=2 on recall and flagged fewer controls, but cost about 40 times more than exact n=3. I first credited window-localization for its precision, then measured that a window-localized exact detector still flagged 117 of 300; the decision log records the correction.
 - **Random web pages made a poor precision test, and hand-labelling changed my conclusions.** Controls drawn from random pages never flagged, so planted-data precision looked perfect. Labelling real hits showed that for MMLU most real findings sit below the 0.9 near-duplicate line, and it exposed my own over-reading of a short, generic ARC item whose "matches" were ordinary encyclopedia sentences.
+- **Short items break every threshold.** A stems-only scan of MMLU produced 115,952 hits and 231 "exact" items, but the strongest were 3-to-6-token fragments such as "homo erectus was ..." found on many unrelated pages. Item length has to be part of any contamination metric.
 - **A real crash taught me about checkpointing.** A 100M-token scan died with a Windows file-lock error (the repo lived in OneDrive); `--resume` continued from the checkpoint without losing or duplicating a hit.
 
 ## How it works
@@ -55,7 +56,7 @@ Every design choice, the experiment behind it and its result is in [`docs/DECISI
 
 - The slices are small compared with FineWeb (roughly 15T tokens; check the dataset card), and FineWeb is already filtered and deduplicated.
 - Paraphrased or translated test items are not detected, and heavily edited copies are mostly missed (see the recall table).
-- Planted corruptions are mechanical, not natural rewrites. Hand labels come from one labeller judging 200-character excerpts, the line between "contains the question" and "quotes it" is a judgement call, a re-label agreement check is pending, and the ARC labels from the FineWeb-Edu scan are being re-checked.
+- Planted corruptions are mechanical, not natural rewrites. Hand labels come from one labeller judging 200-character excerpts, the line between "contains the question" and "quotes it" is a judgement call, a re-label agreement check is pending, and one loose-scan ARC label is being re-checked.
 - English only. Findings concern corpora, not models: overlap does not prove a model saw the data, and exposure does not prove inflated scores.
 
 ## Reproduce
