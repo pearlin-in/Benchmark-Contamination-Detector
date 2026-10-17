@@ -1,7 +1,8 @@
 """Keep only the hits of benchmark items with at least N tokens (DECISIONS.md, D-053, D-057).
 
     python scripts\\filter_scan_by_length.py C:\\contam_scans\\edu_1b_mmlu_q ^
-        --benchmark mmlu --view question --min-tokens 12 --out C:\\contam_scans\\edu_1b_mmlu_q_ge12
+        --benchmark mmlu --view question --min-tokens 20 --min-level NEAR_DUPLICATE ^
+        --best-per-item --out C:\\contam_scans\\edu_1b_mmlu_q_long
 
 Prints, for several minimum lengths, how many items are eligible and how many are flagged at
 each level. With --out it also writes a filtered scan folder that works with label_hits.py
@@ -51,9 +52,32 @@ def table(
 
 
 def filter_hits(
-    hits: list[dict[str, Any]], lengths: dict[str, int], minimum: int
+    hits: list[dict[str, Any]],
+    lengths: dict[str, int],
+    minimum: int,
+    min_level: int = 1,
+    best_per_item: bool = False,
 ) -> list[dict[str, Any]]:
-    return [hit for hit in hits if lengths.get(hit["item_id"], 0) >= minimum]
+    """Hits of items with enough tokens and a strong enough level, optionally one per item."""
+    kept = [
+        hit
+        for hit in hits
+        if lengths.get(hit["item_id"], 0) >= minimum and RANK[hit["level"]] >= min_level
+    ]
+    if not best_per_item:
+        return kept
+    chosen: dict[str, dict[str, Any]] = {}
+    for hit in kept:
+        current = chosen.get(hit["item_id"])
+        if current is None or (RANK[hit["level"]], hit["containment"]) > (
+            RANK[current["level"]],
+            current["containment"],
+        ):
+            chosen[hit["item_id"]] = hit
+    ranked = sorted(
+        chosen.values(), key=lambda h: (-RANK[h["level"]], -h["containment"], h["item_id"])
+    )
+    return ranked
 
 
 def main() -> None:
@@ -62,6 +86,10 @@ def main() -> None:
     parser.add_argument("--benchmark", default="mmlu")
     parser.add_argument("--view", choices=[v.value for v in View], default="question")
     parser.add_argument("--min-tokens", type=int, default=12)
+    parser.add_argument("--min-level", choices=list(RANK), default="PARTIAL")
+    parser.add_argument(
+        "--best-per-item", action="store_true", help="keep only the strongest hit of each item"
+    )
     parser.add_argument("--out", type=Path, default=None)
     args = parser.parse_args()
 
@@ -82,14 +110,15 @@ def main() -> None:
     print("\n".join(table(lengths, skipped, best, minimums)))
 
     if args.out is not None:
-        kept = filter_hits(hits, lengths, args.min_tokens)
+        kept = filter_hits(hits, lengths, args.min_tokens, RANK[args.min_level], args.best_per_item)
         args.out.mkdir(parents=True, exist_ok=True)
         with (args.out / "hits.jsonl").open("w", encoding="utf-8", newline="\n") as handle:
             for hit in kept:
                 handle.write(json.dumps(hit, ensure_ascii=False) + "\n")
         for name in ("scan_meta.json", "checkpoint.json"):
             shutil.copy(args.scan / name, args.out / name)
-        print(f"\nwrote {len(kept):,} hits of items with >= {args.min_tokens} tokens to {args.out}")
+        scope = f"items with >= {args.min_tokens} tokens at level {args.min_level} or stronger"
+        print(f"\nwrote {len(kept):,} hits ({scope}) to {args.out}")
 
 
 if __name__ == "__main__":
